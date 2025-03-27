@@ -226,28 +226,28 @@
 <body>
   <div class="container">
     <h1>Screen Share Client</h1>
-    
+
     <div class="server-connection">
       <h2>Connect to Server</h2>
       <p>Enter the server URL to connect:</p>
-      <input type="text" id="serverUrl" placeholder="Server URL (e.g., http://localhost:3000)" value="http://localhost:3000">
+      <input type="text" id="serverUrl" placeholder="Server URL (e.g., http://localhost:5001)" value="http://localhost:5001">
       <button id="connectServerBtn">Connect</button>
       <button id="disconnectServerBtn" class="stop" disabled>Disconnect</button>
     </div>
-    
+
     <div class="tabs">
       <div class="tab active" data-tab="host">Host Mode</div>
       <div class="tab" data-tab="viewer">Viewer Mode</div>
     </div>
-    
+
     <!-- Host Mode Tab -->
     <div class="tab-content active" id="host-tab">
       <h2>Share Your Screen</h2>
       <p>Select a screen or window to share:</p>
       <button id="getSourcesBtn">Get Sources</button>
-      
+
       <div class="source-list" id="sourceList"></div>
-      
+
       <div class="video-container" id="hostVideoContainer">
         <h3>Preview</h3>
         <video id="hostVideo" autoplay muted></video>
@@ -256,7 +256,7 @@
           <button id="startStreamingBtn">Start Streaming</button>
           <button id="stopStreamingBtn" class="stop" disabled>Stop Streaming</button>
         </div>
-        
+
         <div class="server-info" id="serverInfo">
           <h3>Remote Viewing</h3>
           <p><strong>Stream ID:</strong> <span id="streamId">Waiting for server...</span></p>
@@ -268,23 +268,23 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Viewer Mode Tab -->
     <div class="tab-content" id="viewer-tab">
       <h2>View Remote Screen</h2>
-      
+
       <div class="stream-id-form">
         <p>Enter a stream ID to connect directly:</p>
         <input type="text" id="streamIdInput" placeholder="Stream ID">
         <button id="connectToStreamBtn">Connect</button>
       </div>
-      
+
       <div id="streamSelection">
         <h3>Available Streams</h3>
         <div class="stream-list" id="streamList"></div>
         <div class="no-streams" id="noStreams">No streams available. Waiting for hosts to start streaming...</div>
       </div>
-      
+
       <div class="video-container" id="viewerVideoContainer">
         <h3 id="streamTitle">Viewing Stream</h3>
         <video id="remoteVideo" autoplay playsinline controls></video>
@@ -307,10 +307,29 @@
         </div>
       </div>
     </div>
-    
+
     <div class="status" id="statusMessage"></div>
+
+    <!-- Debug Console -->
+    <div class="debug-console-container">
+      <div class="debug-header">
+        <h3>Debug Console</h3>
+        <div class="debug-buttons">
+          <button id="toggleDebugBtn">Show/Hide</button>
+          <button id="clearDebugBtn">Clear</button>
+          <button id="openDevToolsBtn">Open DevTools</button>
+        </div>
+      </div>
+      <div id="debugConsole" class="debug-console"></div>
+    </div>
   </div>
 
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Socket.IO from CDN (primary) -->
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <!-- Socket.IO local fallback loader -->
+  <script src="socket-fallback.js"></script>
   <script src="client.js"></script>
 </body>
 </html>

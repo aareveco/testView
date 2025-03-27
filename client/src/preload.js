@@ -7,7 +7,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSources: () => ipcRenderer.invoke('get-sources'),
 
   // External links
-  openExternal: (url) => ipcRenderer.invoke('open-external', url)
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // DevTools
+  openDevTools: () => ipcRenderer.invoke('open-devtools')
 });
 
 // Expose environment variables to the renderer process
@@ -15,5 +18,15 @@ contextBridge.exposeInMainWorld('electron', {
   env: {
     SOCKET_SERVER_URL: process.env.SOCKET_SERVER_URL || '',
     PEER_SERVER_URL: process.env.PEER_SERVER_URL || ''
+  },
+  getEnv: () => {
+    console.log('Environment variables:', {
+      SOCKET_SERVER_URL: process.env.SOCKET_SERVER_URL,
+      PEER_SERVER_URL: process.env.PEER_SERVER_URL
+    });
+    return {
+      SOCKET_SERVER_URL: process.env.SOCKET_SERVER_URL || '',
+      PEER_SERVER_URL: process.env.PEER_SERVER_URL || ''
+    };
   }
 });

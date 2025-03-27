@@ -9,9 +9,36 @@ if ! pgrep -x "ngrok" > /dev/null; then
     exit 1
 fi
 
-# Get ngrok URLs
-SOCKET_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"[^"]*"' | grep -o 'http[^"]*' | head -1)
-PEER_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"[^"]*"' | grep -o 'http[^"]*' | tail -1)
+# Get ngrok URLs - simpler approach
+NGROK_JSON=$(curl -s http://localhost:4040/api/tunnels)
+
+# Extract all URLs
+ALL_URLS=$(echo "$NGROK_JSON" | grep -o '"public_url":"[^"]*"' | grep -o 'http[^"]*')
+
+# Print all URLs for debugging
+echo "Available ngrok URLs:"
+echo "$ALL_URLS"
+
+# Get the first HTTPS URL for socket server
+SOCKET_URL=$(echo "$ALL_URLS" | grep 'https' | head -1)
+
+# If no HTTPS URL found, try HTTP
+if [ -z "$SOCKET_URL" ]; then
+    SOCKET_URL=$(echo "$ALL_URLS" | head -1)
+    # Convert to HTTPS if it's HTTP
+    SOCKET_URL=${SOCKET_URL/http:/https:}
+fi
+
+# Get the second URL for peer server
+PEER_URL=$(echo "$ALL_URLS" | grep -v "$SOCKET_URL" | head -1)
+
+# If no second URL found, use the first one
+if [ -z "$PEER_URL" ]; then
+    PEER_URL=$SOCKET_URL
+fi
+
+# Convert to HTTPS if it's HTTP
+PEER_URL=${PEER_URL/http:/https:}
 
 if [ -z "$SOCKET_URL" ] || [ -z "$PEER_URL" ]; then
     echo "Error: Could not get ngrok URLs. Make sure ngrok is running properly."

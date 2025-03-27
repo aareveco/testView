@@ -6,8 +6,189 @@ const statusMessage = document.getElementById('statusMessage');
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
 
+// Debug console elements
+const debugConsole = document.getElementById('debugConsole');
+const toggleDebugBtn = document.getElementById('toggleDebugBtn');
+const clearDebugBtn = document.getElementById('clearDebugBtn');
+const debugConsoleContainer = document.querySelector('.debug-console-container');
+
 // Load environment variables if available
 const socketServerUrl = window.electron?.env?.SOCKET_SERVER_URL || '';
+
+// Debug environment variables
+console.log('Environment variables loaded:', {
+  socketServerUrl
+});
+
+// Try to get environment variables directly
+if (window.electron?.getEnv) {
+  const envVars = window.electron.getEnv();
+  console.log('Environment variables from getEnv:', envVars);
+}
+
+// Debug console functions have been replaced by console overrides
+
+// Store original console methods
+const originalConsoleLog = console.log;
+const originalConsoleInfo = console.info;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
+
+// Flag to prevent infinite recursion
+let isLogging = false;
+
+// Override console methods to also log to debug console
+console.log = function() {
+  if (isLogging) {
+    // If we're already logging, just use the original method
+    originalConsoleLog.apply(console, arguments);
+    return;
+  }
+
+  isLogging = true;
+  try {
+    // Call the original method
+    originalConsoleLog.apply(console, arguments);
+
+    // Add to debug console
+    const formattedArgs = Array.from(arguments).map(arg => {
+      if (arg === null) return 'null';
+      if (arg === undefined) return 'undefined';
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg);
+        } catch (e) {
+          return '[Object cannot be stringified]';
+        }
+      }
+      return String(arg);
+    }).join(' ');
+
+    // Add to debug console without calling console.log again
+    const logEntry = document.createElement('div');
+    logEntry.classList.add('debug-log');
+    const timestamp = new Date().toISOString();
+    logEntry.textContent = `[${timestamp}] ${formattedArgs}`;
+    debugConsole.appendChild(logEntry);
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+  } finally {
+    isLogging = false;
+  }
+};
+
+console.info = function() {
+  if (isLogging) {
+    // If we're already logging, just use the original method
+    originalConsoleInfo.apply(console, arguments);
+    return;
+  }
+
+  isLogging = true;
+  try {
+    // Call the original method
+    originalConsoleInfo.apply(console, arguments);
+
+    // Add to debug console
+    const formattedArgs = Array.from(arguments).map(arg => {
+      if (arg === null) return 'null';
+      if (arg === undefined) return 'undefined';
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg);
+        } catch (e) {
+          return '[Object cannot be stringified]';
+        }
+      }
+      return String(arg);
+    }).join(' ');
+
+    // Add to debug console without calling console.info again
+    const logEntry = document.createElement('div');
+    logEntry.classList.add('debug-log', 'debug-info');
+    const timestamp = new Date().toISOString();
+    logEntry.textContent = `[${timestamp}] INFO: ${formattedArgs}`;
+    debugConsole.appendChild(logEntry);
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+  } finally {
+    isLogging = false;
+  }
+};
+
+console.warn = function() {
+  if (isLogging) {
+    // If we're already logging, just use the original method
+    originalConsoleWarn.apply(console, arguments);
+    return;
+  }
+
+  isLogging = true;
+  try {
+    // Call the original method
+    originalConsoleWarn.apply(console, arguments);
+
+    // Add to debug console
+    const formattedArgs = Array.from(arguments).map(arg => {
+      if (arg === null) return 'null';
+      if (arg === undefined) return 'undefined';
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg);
+        } catch (e) {
+          return '[Object cannot be stringified]';
+        }
+      }
+      return String(arg);
+    }).join(' ');
+
+    // Add to debug console without calling console.warn again
+    const logEntry = document.createElement('div');
+    logEntry.classList.add('debug-log', 'debug-warn');
+    const timestamp = new Date().toISOString();
+    logEntry.textContent = `[${timestamp}] WARNING: ${formattedArgs}`;
+    debugConsole.appendChild(logEntry);
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+  } finally {
+    isLogging = false;
+  }
+};
+
+console.error = function() {
+  if (isLogging) {
+    // If we're already logging, just use the original method
+    originalConsoleError.apply(console, arguments);
+    return;
+  }
+
+  isLogging = true;
+  try {
+    // Call the original method
+    originalConsoleError.apply(console, arguments);
+
+    // Add to debug console
+    const formattedArgs = Array.from(arguments).map(arg => {
+      if (arg === null) return 'null';
+      if (arg === undefined) return 'undefined';
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg);
+        } catch (e) {
+          return '[Object cannot be stringified]';
+        }
+      }
+      return String(arg);
+    }).join(' ');
+
+    // Add to debug console without calling console.error again
+    const logEntry = document.createElement('div');
+    logEntry.classList.add('debug-log', 'debug-error');
+    const timestamp = new Date().toISOString();
+    logEntry.textContent = `[${timestamp}] ERROR: ${formattedArgs}`;
+    debugConsole.appendChild(logEntry);
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+  } finally {
+    isLogging = false;
+  }
+};
 
 // DOM elements - Host mode
 const getSourcesBtn = document.getElementById('getSourcesBtn');
@@ -39,7 +220,7 @@ const currentStreamId = document.getElementById('currentStreamId');
 const connectionStatus = document.getElementById('connectionStatus');
 const streamResolution = document.getElementById('streamResolution');
 const debugBtn = document.getElementById('debugBtn');
-const debugInfo = document.getElementById('debugInfo');
+const debugInfoElement = document.getElementById('debugInfo');
 
 // Variables
 let localStream = null;
@@ -47,6 +228,7 @@ let socket = null;
 let serverData = null;
 let isStreaming = false;
 let activeStreamId = null;
+let isDirectConnection = false; // Flag for direct connection vs. ngrok
 
 // Viewer mode variables
 let peerConnection = null;
@@ -74,14 +256,33 @@ function showStatus(message, isError = false) {
 
   if (isError) {
     statusMessage.classList.add('error');
+    console.error('Status:', message);
   } else {
     statusMessage.classList.remove('error');
+    console.info('Status:', message);
   }
 
-  // Hide after 5 seconds if not an error
+  // For important messages, make them more visible
+  if (message.includes('Connected') || message.includes('Error') || message.includes('Failed')) {
+    statusMessage.style.fontWeight = 'bold';
+  } else {
+    statusMessage.style.fontWeight = 'normal';
+  }
+
+  // Fade after 5 seconds if not an error
   if (!isError) {
     setTimeout(() => {
-      statusMessage.style.display = 'none';
+      if (statusMessage.textContent === message) {
+        statusMessage.style.opacity = '0.7';
+
+        // Hide after 10 seconds
+        setTimeout(() => {
+          if (statusMessage.textContent === message) {
+            statusMessage.style.display = 'none';
+            statusMessage.style.opacity = '1';
+          }
+        }, 5000);
+      }
     }, 5000);
   }
 }
@@ -111,6 +312,10 @@ async function connectToServer() {
       serverUrlInput.value = socketServerUrl;
     }
 
+    // Set the direct connection flag for local testing
+    isDirectConnection = serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1');
+    console.info('Using direct connection:', isDirectConnection);
+
     if (!serverUrl) {
       showStatus('Please enter a server URL', true);
       return false;
@@ -118,21 +323,38 @@ async function connectToServer() {
 
     showStatus(`Connecting to server at ${serverUrl}...`);
 
-    // Parse the server URL
-    const url = new URL(serverUrl);
+    try {
+      // Parse the server URL
+      const url = new URL(serverUrl);
 
-    // Store server data
-    serverData = {
-      url: serverUrl,
-      ip: url.hostname,
-      port: url.port || (url.protocol === 'https:' ? 443 : 80)
-    };
+      // Store server data
+      serverData = {
+        url: serverUrl,
+        ip: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80)
+      };
+    } catch (urlError) {
+      console.error('Invalid server URL:', urlError);
+      showStatus(`Invalid server URL: ${urlError.message}`, true);
+      return false;
+    }
 
     // Connect to Socket.IO server
-    await connectToSignalingServer();
+    try {
+      await connectToSignalingServer();
+    } catch (socketError) {
+      console.error('Socket connection error:', socketError);
+      showStatus(`Socket connection error: ${socketError.message}`, true);
+      return false;
+    }
 
     if (!socket) {
-      showStatus('Failed to connect to server', true);
+      showStatus('Failed to create socket connection', true);
+      return false;
+    }
+
+    if (!socket.connected) {
+      showStatus('Socket created but not connected', true);
       return false;
     }
 
@@ -177,46 +399,300 @@ function disconnectFromServer() {
 // Connect to the signaling server
 async function connectToSignalingServer() {
   try {
+    console.info('Connecting to signaling server with serverData:', serverData);
+
     // Check if Socket.IO is loaded
     if (typeof io === 'undefined') {
-      console.log('Socket.IO not loaded, attempting to load it dynamically');
+      console.error('Socket.IO not loaded. Attempting to load it dynamically.');
+      showStatus('Loading Socket.IO library...', false);
 
       // Try to load Socket.IO dynamically
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = `${serverData.url}/socket.io/socket.io.js`;
-        script.onload = resolve;
-        script.onerror = () => {
-          // Try CDN as fallback
-          const cdnScript = document.createElement('script');
-          cdnScript.src = 'https://cdn.socket.io/4.4.1/socket.io.min.js';
-          cdnScript.onload = resolve;
-          cdnScript.onerror = reject;
-          document.head.appendChild(cdnScript);
-        };
-        document.head.appendChild(script);
-      });
+      try {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.socket.io/4.8.1/socket.io.min.js';
+          script.onload = () => {
+            console.info('Socket.IO loaded dynamically');
+            resolve();
+          };
+          script.onerror = (error) => {
+            console.error('Failed to load Socket.IO from primary CDN:', error);
+            console.warn('Trying alternative CDN...');
 
-      console.log('Socket.IO loaded dynamically');
+            // Try an alternative CDN
+            const altScript = document.createElement('script');
+            altScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js';
+            altScript.onload = () => {
+              console.info('Socket.IO loaded from alternative CDN');
+              resolve();
+            };
+            altScript.onerror = (altError) => {
+              console.error('Failed to load Socket.IO from alternative CDN:', altError);
+              console.warn('Trying to load from server...');
+
+              // Try to load from the server as a last resort
+              const serverScript = document.createElement('script');
+              serverScript.src = `${serverData.url}/socket.io/socket.io.js`;
+              serverScript.onload = () => {
+                console.info('Socket.IO loaded from server');
+                resolve();
+              };
+              serverScript.onerror = (serverError) => {
+                console.error('Failed to load Socket.IO from server:', serverError);
+                reject(new Error('Failed to load Socket.IO from all sources'));
+              };
+              document.head.appendChild(serverScript);
+            };
+            document.head.appendChild(altScript);
+          };
+          document.head.appendChild(script);
+
+          // Set a timeout
+          setTimeout(() => {
+            if (typeof io === 'undefined') {
+              reject(new Error('Socket.IO load timeout'));
+            }
+          }, 5000);
+        });
+      } catch (loadError) {
+        console.error('Error loading Socket.IO:', loadError);
+        showStatus('Error: Failed to load Socket.IO. Please refresh the page.', true);
+        return false;
+      }
+
+      // Double-check that Socket.IO is now loaded
+      if (typeof io === 'undefined') {
+        console.error('Socket.IO still not loaded after dynamic loading attempt.');
+        showStatus('Error: Socket.IO not loaded. Please refresh the page.', true);
+        return false;
+      }
     }
 
     // Create Socket.IO connection
-    console.log('Connecting to Socket.IO server at:', serverData.url);
-    socket = io(serverData.url);
+    console.info('Connecting to Socket.IO server at:', serverData.url);
+
+    // Add connection options for better reliability
+    try {
+      // Close existing socket if it exists
+      if (socket) {
+        console.info('Closing existing socket connection');
+        socket.disconnect();
+        socket = null;
+      }
+
+      // Verify serverData is available
+      if (!serverData || !serverData.url) {
+        console.error('Server data is missing or invalid');
+        showStatus('Error: Server data is missing or invalid', true);
+        return false;
+      }
+
+      // Create socket connection with settings based on connection type
+      const connectionOptions = {
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+        forceNew: true,
+        reconnection: true,
+        autoConnect: true,
+        secure: serverData.url.startsWith('https')
+      };
+
+      // Log server data and connection type
+      console.info('Server data:', serverData);
+      console.info('Connection type:', isDirectConnection ? 'Direct' : 'Ngrok');
+
+      // Add specific options based on connection type
+      if (isDirectConnection) {
+        // Direct connection (localhost) - use both transports
+        console.info('Using direct connection options');
+        connectionOptions.transports = ['polling', 'websocket'];
+      } else {
+        // Ngrok connection - use only polling and add extra options
+        console.info('Using ngrok connection options');
+        connectionOptions.transports = ['polling'];
+        connectionOptions.forceBase64 = true;
+        connectionOptions.upgrade = false;
+        connectionOptions.extraHeaders = {
+          'ngrok-skip-browser-warning': 'true'
+        };
+      }
+
+      // Check again if Socket.IO is loaded (it might have loaded asynchronously)
+      if (typeof io === 'undefined') {
+        console.warn('Socket.IO still not available, waiting for it to load...');
+
+        // Wait for Socket.IO to be available
+        await new Promise((resolve, reject) => {
+          const checkInterval = setInterval(() => {
+            if (typeof io !== 'undefined') {
+              clearInterval(checkInterval);
+              clearTimeout(timeoutId);
+              console.info('Socket.IO is now available');
+              resolve();
+            }
+          }, 100);
+
+          // Set a timeout
+          const timeoutId = setTimeout(() => {
+            clearInterval(checkInterval);
+            reject(new Error('Timed out waiting for Socket.IO to load'));
+          }, 10000);
+        });
+      }
+
+      // Create the socket connection
+      try {
+        console.info('Creating Socket.IO instance with URL:', serverData.url);
+        console.info('Connection options:', connectionOptions);
+
+        socket = io(serverData.url, connectionOptions);
+
+        if (!socket) {
+          throw new Error('Failed to create Socket.IO instance');
+        }
+
+        console.info('Socket.IO instance created successfully');
+      } catch (socketError) {
+        console.error('Error creating Socket.IO instance:', socketError);
+        showStatus(`Error creating Socket.IO instance: ${socketError.message}`, true);
+        return false;
+      }
+
+      console.info('Socket.IO instance created');
+
+      // Wait for connection to be established
+      await new Promise((resolve, reject) => {
+        // Set a timeout for connection
+        const connectionTimeout = setTimeout(() => {
+          console.warn('Connection attempt timed out, but still waiting...');
+
+          // Set a final timeout
+          setTimeout(() => {
+            if (!socket.connected) {
+              reject(new Error('Connection timeout after extended wait'));
+            }
+          }, 10000); // Give it 10 more seconds
+        }, 10000); // Initial 10 second timeout
+
+        // Handle successful connection
+        socket.on('connect', () => {
+          console.info('Socket connected successfully with ID:', socket.id);
+          clearTimeout(connectionTimeout);
+          resolve();
+        });
+
+        // Handle connection error
+        socket.on('connect_error', (error) => {
+          console.error('Socket connection error:', error);
+
+          // Check for parser error
+          if (error && error.code === 'parser error') {
+            console.warn('Parser error detected, trying to reconnect...');
+
+            // Try to reconnect with different settings
+            socket.io.opts.transports = ['polling'];
+            socket.io.opts.forceBase64 = true; // Force base64 encoding
+            socket.io.opts.upgrade = false; // Disable upgrades
+
+            // Manually reconnect
+            socket.disconnect().connect();
+          }
+
+          // Don't reject immediately on first error with ngrok
+          // Let the timeout handle it if it persists
+        });
+
+        // Handle transport error
+        socket.io.on('error', (error) => {
+          console.error('Transport error:', error);
+
+          // Check for parser error
+          if (error && error.code === 'parser error') {
+            console.warn('Transport parser error detected, trying to reconnect...');
+
+            // Try to reconnect with different settings
+            socket.io.opts.transports = ['polling'];
+            socket.io.opts.forceBase64 = true; // Force base64 encoding
+            socket.io.opts.upgrade = false; // Disable upgrades
+
+            // Manually reconnect
+            socket.disconnect().connect();
+          }
+
+          // Don't reject immediately on first error with ngrok
+          // Let the timeout handle it if it persists
+        });
+
+        // Handle reconnect attempt
+        socket.io.on('reconnect_attempt', (attempt) => {
+          console.info('Reconnection attempt:', attempt);
+        });
+
+        // Handle reconnect
+        socket.on('reconnect', (attempt) => {
+          console.info('Socket reconnected after', attempt, 'attempts');
+          clearTimeout(connectionTimeout);
+          resolve();
+        });
+      });
+
+      console.info('Socket.IO connection established or in progress');
+    } catch (socketError) {
+      console.error('Error creating Socket.IO instance:', socketError);
+      throw socketError;
+    }
 
     // Socket.IO event handlers
     socket.on('connect', () => {
-      console.log('Connected to signaling server');
+      console.info('Connected to signaling server');
+      console.info('Socket ID:', socket.id);
     });
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from signaling server');
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      showStatus(`Connection error: ${error.message}`, true);
+    });
+
+    socket.on('connect_timeout', (timeout) => {
+      console.error('Socket connection timeout:', timeout);
+      showStatus('Connection timeout', true);
+    });
+
+    socket.on('error', (error) => {
+      console.error('Socket error:', error);
+      showStatus(`Socket error: ${error.message || 'Unknown error'}`, true);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('Disconnected from signaling server. Reason:', reason);
       if (isStreaming) {
+        console.info('Stopping remote streaming due to disconnect');
         stopRemoteStreaming();
       }
       if (currentHostId) {
+        console.info('Disconnecting from stream due to server disconnect');
         disconnectFromStream();
       }
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.info('Reconnected to signaling server after', attemptNumber, 'attempts');
+      showStatus('Reconnected to server');
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      console.info('Attempting to reconnect to server, attempt', attemptNumber);
+    });
+
+    socket.on('reconnect_error', (error) => {
+      console.error('Error reconnecting to server:', error);
+    });
+
+    socket.on('reconnect_failed', () => {
+      console.error('Failed to reconnect to server after multiple attempts');
+      showStatus('Failed to reconnect to server. Please try again.', true);
     });
 
     // Receive active streams on connection
@@ -247,19 +723,57 @@ async function connectToSignalingServer() {
 
     // Host mode: Stream started confirmation
     socket.on('stream-started', (data) => {
-      console.log('Stream started with ID:', data.id);
+      console.info('Stream started event received with data:', data);
 
-      // Update UI with stream ID and URL
-      activeStreamId = data.id;
-      streamId.textContent = data.id;
-      viewerUrl.textContent = `${serverData.url}/view/${data.id}`;
+      try {
+        if (!data) {
+          console.error('Null or undefined stream data received');
+          showStatus('Error: No stream data received from server', true);
+          return;
+        }
 
-      // Update UI
-      startStreamingBtn.disabled = true;
-      stopStreamingBtn.disabled = false;
-      serverInfo.style.display = 'block';
+        if (!data.id) {
+          console.error('Invalid stream data received (missing ID):', data);
+          showStatus('Error: Invalid stream data received from server (missing ID)', true);
+          return;
+        }
 
-      isStreaming = true;
+        console.info('Stream started successfully with ID:', data.id);
+
+        // Update UI with stream ID and URL
+        activeStreamId = data.id;
+        streamId.textContent = data.id;
+
+        // Use ngrok URL if available, otherwise use server URL
+        const viewerUrlBase = serverData.url;
+        const fullViewerUrl = `${viewerUrlBase}/view/${data.id}`;
+        viewerUrl.textContent = fullViewerUrl;
+
+        console.info('Viewer URL set to:', fullViewerUrl);
+
+        // Update UI
+        startStreamingBtn.disabled = true;
+        stopStreamingBtn.disabled = false;
+        serverInfo.style.display = 'block';
+
+        isStreaming = true;
+
+        // Copy stream ID to clipboard for convenience
+        try {
+          navigator.clipboard.writeText(data.id).then(() => {
+            console.info('Stream ID copied to clipboard');
+          }).catch(err => {
+            console.warn('Could not copy stream ID to clipboard:', err);
+          });
+        } catch (clipboardError) {
+          console.warn('Clipboard API not available:', clipboardError);
+        }
+
+        showStatus(`Stream started with ID: ${data.id}`);
+      } catch (streamError) {
+        console.error('Error processing stream-started event:', streamError);
+        showStatus(`Error processing stream data: ${streamError.message}`, true);
+      }
     });
 
     // Viewer mode: Receive stream info
@@ -272,6 +786,12 @@ async function connectToSignalingServer() {
     socket.on('stream-not-found', (data) => {
       console.log('Stream not found:', data);
       showStatus(`Stream with ID ${data.id} not found`, true);
+    });
+
+    // Handle stream errors
+    socket.on('stream-error', (data) => {
+      console.error('Stream error received:', data);
+      showStatus(`Stream error: ${data.error}. ${data.details || ''}`, true);
     });
 
     // WebRTC signaling for host mode
@@ -315,22 +835,45 @@ async function connectToSignalingServer() {
 // Get available screen sources
 async function getSources() {
   try {
+    console.info('Getting available screens and windows...');
     getSourcesBtn.disabled = true;
     showStatus('Getting available screens and windows...');
 
+    // Check if electronAPI is available
+    if (!window.electronAPI) {
+      console.error('electronAPI is not available');
+      showStatus('Error: electronAPI is not available', true);
+      getSourcesBtn.disabled = false;
+      return;
+    }
+
+    // Check if getSources method is available
+    if (!window.electronAPI.getSources) {
+      console.error('electronAPI.getSources method is not available');
+      showStatus('Error: getSources method is not available', true);
+      getSourcesBtn.disabled = false;
+      return;
+    }
+
+    console.info('Calling window.electronAPI.getSources()...');
     const sources = await window.electronAPI.getSources();
+    console.info('getSources response received:', sources);
 
     if (sources && sources.error) {
+      console.error('Error from getSources:', sources);
       showStatus(`Error: ${sources.message}`, true);
       getSourcesBtn.disabled = false;
       return;
     }
 
     if (!sources || sources.length === 0) {
+      console.warn('No sources found');
       showStatus('No screens or windows found to share', true);
       getSourcesBtn.disabled = false;
       return;
     }
+
+    console.info(`Found ${sources.length} sources`);
 
     // Clear previous sources
     sourceList.innerHTML = '';
@@ -382,6 +925,7 @@ async function getSources() {
 // Start sharing the selected screen/window
 async function startSharing(sourceId) {
   try {
+    console.info('Starting screen sharing with sourceId:', sourceId);
     showStatus('Starting screen sharing...');
 
     // Create a stream from the selected source
@@ -395,9 +939,25 @@ async function startSharing(sourceId) {
       }
     };
 
-    console.log('Getting user media with constraints:', JSON.stringify(constraints));
+    console.info('Getting user media with constraints:', JSON.stringify(constraints));
+
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    console.log('Got media stream:', stream);
+    console.info('Got media stream:', {
+      id: stream.id,
+      active: stream.active,
+      trackCount: stream.getTracks().length
+    });
+
+    // Log track information
+    stream.getTracks().forEach((track, index) => {
+      console.info(`Track ${index + 1}:`, {
+        kind: track.kind,
+        id: track.id,
+        label: track.label,
+        enabled: track.enabled,
+        readyState: track.readyState
+      });
+    });
 
     // Save the local stream for later use with WebRTC
     localStream = stream;
@@ -445,19 +1005,98 @@ function stopSharing() {
 // Start remote streaming
 async function startRemoteStreaming() {
   try {
+    console.info('Starting remote streaming...');
+
     // Make sure we're connected to a server
     if (!socket) {
+      console.warn('No socket connection, attempting to connect to server...');
       const connected = await connectToServer();
-      if (!connected) return;
+      if (!connected) {
+        console.error('Failed to connect to server');
+        showStatus('Failed to connect to server', true);
+        return;
+      }
     }
 
+    // Check socket connection state
+    if (!socket || !socket.connected) {
+      console.warn('Socket not connected, attempting to connect to server...');
+      try {
+        // Create a new connection to the server
+        const connected = await connectToServer();
+        if (!connected) {
+          console.error('Failed to connect to server');
+          showStatus('Failed to connect to server. Please check the server URL and try again.', true);
+          return;
+        }
+      } catch (connectionError) {
+        console.error('Error connecting to server:', connectionError);
+        showStatus(`Error connecting to server: ${connectionError.message}`, true);
+        return;
+      }
+    }
+
+    // Double-check that socket is connected before proceeding
+    if (!socket || !socket.connected) {
+      console.error('Socket still not connected after connection attempt');
+      showStatus('Failed to establish server connection. Please try again.', true);
+      return;
+    }
+
+    console.info('Socket connection verified, socket ID:', socket.id);
+
     // Get the selected source name
+    if (!hostVideo.srcObject || !hostVideo.srcObject.getTracks || !hostVideo.srcObject.getTracks().length) {
+      console.error('No video source selected or invalid source');
+      showStatus('Error: No video source selected', true);
+      return;
+    }
+
     const sourceName = hostVideo.srcObject.getTracks()[0].label;
+    console.info('Starting stream with source:', sourceName);
+
+    // Create a unique stream ID to help with debugging
+    const streamData = {
+      name: sourceName,
+      clientId: socket.id,
+      timestamp: new Date().toISOString(),
+      // Add a random component to help with debugging
+      debug: Math.random().toString(36).substring(2, 15)
+    };
+
+    console.info('Emitting start-stream event with data:', streamData);
+
+    // Reset active stream ID before starting new stream
+    activeStreamId = null;
 
     // Notify the server that we're starting a stream
-    socket.emit('start-stream', {
-      name: sourceName
-    });
+    socket.emit('start-stream', streamData);
+
+    // Set a timeout to check if we received a stream ID
+    const streamIdCheckTimeout = setTimeout(() => {
+      if (!activeStreamId) {
+        console.warn('No stream ID received after 5 seconds');
+        showStatus('Warning: No stream ID received yet. Check server connection.', true);
+
+        // Try to emit the event again
+        console.info('Retrying start-stream event...');
+        socket.emit('start-stream', {
+          ...streamData,
+          retry: true,
+          retryTime: new Date().toISOString()
+        });
+
+        // Set another timeout for the retry
+        setTimeout(() => {
+          if (!activeStreamId) {
+            console.error('Still no stream ID received after retry');
+            showStatus('Error: Failed to start stream. Please try again.', true);
+          }
+        }, 5000);
+      } else {
+        console.info('Stream ID received successfully:', activeStreamId);
+      }
+    }, 5000);
 
     showStatus('Starting remote stream...');
   } catch (error) {
@@ -895,7 +1534,7 @@ shareViewerBtn.addEventListener('click', () => {
 
 // Debug button
 debugBtn.addEventListener('click', () => {
-  if (debugInfo.style.display === 'none' || !debugInfo.style.display) {
+  if (debugInfoElement.style.display === 'none' || !debugInfoElement.style.display) {
     let info = 'Debug Information:\n';
 
     if (peerConnection) {
@@ -916,16 +1555,16 @@ debugBtn.addEventListener('click', () => {
             statsInfo += `\nJitter: ${report.jitter}`;
           }
         });
-        debugInfo.textContent = info + statsInfo;
+        debugInfoElement.textContent = info + statsInfo;
       });
     } else {
-      debugInfo.textContent = 'No active connection';
+      debugInfoElement.textContent = 'No active connection';
     }
 
-    debugInfo.style.display = 'block';
+    debugInfoElement.style.display = 'block';
     debugBtn.textContent = 'Hide Debug Info';
   } else {
-    debugInfo.style.display = 'none';
+    debugInfoElement.style.display = 'none';
     debugBtn.textContent = 'Show Debug Info';
   }
 });
@@ -952,6 +1591,40 @@ function checkUrlForStreamId() {
     }, 1000);
   }
 }
+
+// Set up debug console
+toggleDebugBtn.addEventListener('click', () => {
+  if (debugConsoleContainer.style.display === 'block') {
+    debugConsoleContainer.style.display = 'none';
+    toggleDebugBtn.textContent = 'Show Debug';
+  } else {
+    debugConsoleContainer.style.display = 'block';
+    toggleDebugBtn.textContent = 'Hide Debug';
+  }
+});
+
+clearDebugBtn.addEventListener('click', () => {
+  debugConsole.innerHTML = '';
+  console.log('Debug console cleared');
+});
+
+// Open DevTools button
+const openDevToolsBtn = document.getElementById('openDevToolsBtn');
+if (openDevToolsBtn) {
+  openDevToolsBtn.addEventListener('click', () => {
+    console.info('Opening DevTools...');
+    if (window.electronAPI && window.electronAPI.openDevTools) {
+      window.electronAPI.openDevTools();
+    } else {
+      console.error('openDevTools API not available');
+      showStatus('Error: DevTools API not available', true);
+    }
+  });
+}
+
+// Show debug console by default
+debugConsoleContainer.style.display = 'block';
+console.log('Debug console initialized');
 
 // Initialize
 checkUrlForStreamId();
