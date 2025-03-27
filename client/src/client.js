@@ -6,6 +6,9 @@ const statusMessage = document.getElementById('statusMessage');
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
 
+// Load environment variables if available
+const socketServerUrl = window.electron?.env?.SOCKET_SERVER_URL || '';
+
 // DOM elements - Host mode
 const getSourcesBtn = document.getElementById('getSourcesBtn');
 const sourceList = document.getElementById('sourceList');
@@ -100,7 +103,13 @@ tabs.forEach(tab => {
 // Connect to server
 async function connectToServer() {
   try {
-    const serverUrl = serverUrlInput.value.trim();
+    // Use environment variable if available, otherwise use input value
+    let serverUrl = socketServerUrl || serverUrlInput.value.trim();
+
+    // If environment variable is set, populate the input field
+    if (socketServerUrl && !serverUrlInput.value) {
+      serverUrlInput.value = socketServerUrl;
+    }
 
     if (!serverUrl) {
       showStatus('Please enter a server URL', true);

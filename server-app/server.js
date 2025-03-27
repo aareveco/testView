@@ -2,6 +2,10 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config();
 const { v4: uuidv4 } = require('uuid');
 
 // Create Express app
@@ -31,16 +35,16 @@ const socketToStreamId = new Map();
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
-  
+
   // Send list of active streams to new clients
   socket.emit('active-streams', Array.from(activeStreams.values()));
-  
+
   // Host starts streaming
   socket.on('start-stream', (streamInfo) => {
     // Generate a unique ID if not provided
     const streamId = streamInfo.id || uuidv4();
     console.log('Stream started:', streamId);
-    
+
     // Add stream info to active streams
     const stream = {
       id: streamId,
@@ -48,40 +52,40 @@ io.on('connection', (socket) => {
       hostId: socket.id,
       createdAt: new Date().toISOString()
     };
-    
+
     activeStreams.set(streamId, stream);
     socketToStreamId.set(socket.id, streamId);
-    
+
     // Notify the host about the stream ID
     socket.emit('stream-started', {
       id: streamId,
       url: `/view/${streamId}`
     });
-    
+
     // Notify all clients about the new stream
     socket.broadcast.emit('stream-added', stream);
   });
-  
+
   // Host stops streaming
   socket.on('stop-stream', () => {
     const streamId = socketToStreamId.get(socket.id);
-    
+
     if (streamId && activeStreams.has(streamId)) {
       const streamInfo = activeStreams.get(streamId);
       console.log('Stream stopped:', streamId);
-      
+
       // Remove stream from active streams
       activeStreams.delete(streamId);
       socketToStreamId.delete(socket.id);
-      
+
       // Notify all clients about the removed stream
-      socket.broadcast.emit('stream-removed', { 
+      socket.broadcast.emit('stream-removed', {
         id: streamId,
-        hostId: socket.id 
+        hostId: socket.id
       });
     }
   });
-  
+
   // Client requests a specific stream
   socket.on('get-stream', (streamId) => {
     if (activeStreams.has(streamId)) {
@@ -91,9 +95,9 @@ io.on('connection', (socket) => {
       socket.emit('stream-not-found', { id: streamId });
     }
   });
-  
+
   // WebRTC signaling
-  
+
   // Client sends offer to host
   socket.on('offer', (data) => {
     console.log('Offer received from', socket.id, 'to', data.hostId);
@@ -103,7 +107,7 @@ io.on('connection', (socket) => {
       streamId: data.streamId
     });
   });
-  
+
   // Host sends answer to client
   socket.on('answer', (data) => {
     console.log('Answer received from', socket.id, 'to', data.viewerId);
@@ -112,7 +116,7 @@ io.on('connection', (socket) => {
       hostId: socket.id
     });
   });
-  
+
   // ICE candidate exchange
   socket.on('ice-candidate', (data) => {
     console.log('ICE candidate received from', socket.id);
@@ -128,26 +132,26 @@ io.on('connection', (socket) => {
       });
     }
   });
-  
+
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
-    
+
     // If a host disconnects, remove their stream
     const streamId = socketToStreamId.get(socket.id);
-    
+
     if (streamId && activeStreams.has(streamId)) {
       const streamInfo = activeStreams.get(streamId);
       console.log('Stream stopped (host disconnected):', streamId);
-      
+
       // Remove stream from active streams
       activeStreams.delete(streamId);
       socketToStreamId.delete(socket.id);
-      
+
       // Notify all clients about the removed stream
-      socket.broadcast.emit('stream-removed', { 
+      socket.broadcast.emit('stream-removed', {
         id: streamId,
-        hostId: socket.id 
+        hostId: socket.id
       });
     }
   });
@@ -164,8 +168,16 @@ if (!fs.existsSync(publicDir)) {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Server URL: http://localhost:${PORT}`);
-  console.log(`Viewer URL: http://localhost:${PORT}/view`);
+
+  // Display local URLs
+  console.log(`Local Server URL: http://localhost:${PORT}`);
+  console.log(`Local Viewer URL: http://localhost:${PORT}/view`);
+
+  // Display ngrok URL if available
+  if (process.env.NGROK_URL) {
+    console.log(`\nNgrok Server URL: ${process.env.NGROK_URL}`);
+    console.log(`Ngrok Viewer URL: ${process.env.NGROK_URL}/view`);
+  }
 });
 
 // Log server IP addresses

@@ -1,5 +1,9 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer, shell } = require('electron');
 const path = require('path');
+const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config();
 
 // Keep a global reference of the window object to avoid garbage collection
 let mainWindow;
@@ -31,7 +35,7 @@ function createWindow() {
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
   createWindow();
-  
+
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -41,7 +45,7 @@ app.whenReady().then(() => {
 ipcMain.handle('get-sources', async () => {
   try {
     console.log('Main process: Getting screen sources');
-    const sources = await desktopCapturer.getSources({ 
+    const sources = await desktopCapturer.getSources({
       types: ['screen', 'window'],
       thumbnailSize: { width: 400, height: 400 }
     });
