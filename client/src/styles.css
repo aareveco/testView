@@ -93,6 +93,13 @@ video {
   background-color: #000;
 }
 
+/* Remote control styles */
+video.remote-control-active {
+  cursor: default;
+  pointer-events: all !important;
+  user-select: none;
+}
+
 /* Source list styles */
 .source-list {
   display: grid;

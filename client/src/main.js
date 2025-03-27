@@ -152,7 +152,7 @@ ipcMain.handle('open-devtools', () => {
 });
 
 // Remote control handlers using Electron's built-in APIs
-const { screen } = require('electron');
+const { screen, clipboard } = require('electron');
 const robot = {
   getScreenSize: () => {
     const primaryDisplay = screen.getPrimaryDisplay();
@@ -160,12 +160,21 @@ const robot = {
   }
 };
 
+// Try to load robotjs if available
+let robotjs = null;
+try {
+  robotjs = require('robotjs');
+  console.log('RobotJS loaded successfully');
+} catch (error) {
+  console.error('RobotJS not available, using fallback methods');
+}
+
 // Handle key events
 ipcMain.handle('simulate-key-event', async (event, eventData) => {
   console.log('Simulating key event:', eventData);
 
   try {
-    // Log the key event for now
+    // Log the key event
     console.log('Key event:', eventData.key, 'modifiers:', {
       ctrl: eventData.ctrlKey,
       shift: eventData.shiftKey,
@@ -173,7 +182,60 @@ ipcMain.handle('simulate-key-event', async (event, eventData) => {
       meta: eventData.metaKey
     });
 
-    // In a real implementation, we would use a native module to simulate key presses
+    // If robotjs is available, use it
+    if (robotjs) {
+      try {
+        // Handle modifier keys
+        const modifiers = [];
+        if (eventData.ctrlKey) modifiers.push('control');
+        if (eventData.shiftKey) modifiers.push('shift');
+        if (eventData.altKey) modifiers.push('alt');
+        if (eventData.metaKey) modifiers.push('command');
+
+        // Map special keys
+        let key = eventData.key;
+        if (key === 'ArrowUp') key = 'up';
+        if (key === 'ArrowDown') key = 'down';
+        if (key === 'ArrowLeft') key = 'left';
+        if (key === 'ArrowRight') key = 'right';
+        if (key === 'Backspace') key = 'backspace';
+        if (key === 'Delete') key = 'delete';
+        if (key === 'Enter') key = 'enter';
+        if (key === 'Escape') key = 'escape';
+        if (key === 'Tab') key = 'tab';
+        if (key === ' ') key = 'space';
+
+        // For single character keys, use lowercase
+        if (key.length === 1) {
+          key = key.toLowerCase();
+        }
+
+        // Simulate key press with modifiers
+        if (modifiers.length > 0) {
+          robotjs.keyTap(key, modifiers);
+        } else {
+          robotjs.keyTap(key);
+        }
+
+        return { success: true };
+      } catch (robotError) {
+        console.error('RobotJS error:', robotError);
+        // Fall through to fallback method
+      }
+    }
+
+    // Fallback method: For text input, use clipboard
+    if (eventData.key.length === 1 && !eventData.ctrlKey && !eventData.altKey && !eventData.metaKey) {
+      // For simple text input, we can use the clipboard as a fallback
+      const text = eventData.shiftKey ? eventData.key.toUpperCase() : eventData.key.toLowerCase();
+      clipboard.writeText(text);
+
+      // Send paste command to active window
+      if (mainWindow && mainWindow.isFocused()) {
+        mainWindow.webContents.paste();
+      }
+    }
+
     // For now, we'll just return success
     return { success: true };
   } catch (error) {
@@ -203,7 +265,34 @@ ipcMain.handle('simulate-mouse-event', async (event, data) => {
     // Log the mouse event
     console.log(`Mouse ${type} at (${boundedX}, ${boundedY}) button: ${eventData.button}`);
 
-    // In a real implementation, we would use a native module to simulate mouse events
+    // If robotjs is available, use it
+    if (robotjs) {
+      try {
+        switch (type) {
+          case 'mousemove':
+            robotjs.moveMouse(boundedX, boundedY);
+            break;
+          case 'mousedown':
+            robotjs.moveMouse(boundedX, boundedY);
+            robotjs.mouseToggle('down', eventData.button === 0 ? 'left' : (eventData.button === 2 ? 'right' : 'middle'));
+            break;
+          case 'mouseup':
+            robotjs.moveMouse(boundedX, boundedY);
+            robotjs.mouseToggle('up', eventData.button === 0 ? 'left' : (eventData.button === 2 ? 'right' : 'middle'));
+            break;
+        }
+        return { success: true };
+      } catch (robotError) {
+        console.error('RobotJS error:', robotError);
+        // Fall through to fallback method
+      }
+    }
+
+    // Fallback method: For clicks, we can try to focus the window
+    if (type === 'mousedown' && mainWindow) {
+      mainWindow.focus();
+    }
+
     // For now, we'll just return success
     return { success: true };
   } catch (error) {
@@ -220,7 +309,19 @@ ipcMain.handle('simulate-wheel-event', async (event, eventData) => {
     // Log the wheel event
     console.log(`Wheel event: deltaX=${eventData.deltaX}, deltaY=${eventData.deltaY}`);
 
-    // In a real implementation, we would use a native module to simulate wheel events
+    // If robotjs is available, use it
+    if (robotjs) {
+      try {
+        // RobotJS scroll amount is in pixels
+        const scrollAmount = Math.sign(eventData.deltaY) * 5;
+        robotjs.scrollMouse(0, scrollAmount);
+        return { success: true };
+      } catch (robotError) {
+        console.error('RobotJS error:', robotError);
+        // Fall through to fallback method
+      }
+    }
+
     // For now, we'll just return success
     return { success: true };
   } catch (error) {

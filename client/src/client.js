@@ -693,6 +693,19 @@ async function connectToSignalingServer() {
 
           // Remove event listeners
           removeRemoteControlListeners();
+
+          // Remove remote control class from video
+          if (remoteVideo) {
+            remoteVideo.classList.remove('remote-control-active');
+          }
+
+          // Update button visibility
+          if (requestRemoteControlBtn) {
+            requestRemoteControlBtn.style.display = 'inline-block';
+          }
+          if (stopRemoteControlBtn) {
+            stopRemoteControlBtn.style.display = 'none';
+          }
         });
 
         // Viewer: Remote control request response
@@ -713,6 +726,11 @@ async function connectToSignalingServer() {
 
           // Add event listeners to the video element
           setupViewerRemoteControlListeners();
+
+          // Add remote control class to video
+          if (remoteVideo) {
+            remoteVideo.classList.add('remote-control-active');
+          }
         });
 
         // Viewer: Remote control rejected
@@ -1894,10 +1912,19 @@ function setupViewerRemoteControlListeners() {
     viewerVideo.addEventListener('mousemove', handleViewerMouseMove);
     viewerVideo.addEventListener('wheel', handleViewerWheel);
     viewerVideo.addEventListener('contextmenu', handleViewerContextMenu);
+    viewerVideo.addEventListener('click', handleViewerClick);
+    viewerVideo.addEventListener('dblclick', handleViewerClick);
+    viewerVideo.addEventListener('play', preventVideoControls);
+    viewerVideo.addEventListener('pause', preventVideoControls);
 
     // Make the video element focusable
     viewerVideo.setAttribute('tabindex', '0');
     viewerVideo.focus();
+
+    // Ensure video is playing
+    if (viewerVideo.paused) {
+      viewerVideo.play().catch(err => console.error('Error playing video:', err));
+    }
   }
 
   // Add ESC key listener to document to stop remote control
@@ -1913,12 +1940,38 @@ function removeViewerRemoteControlListeners() {
     viewerVideo.removeEventListener('mousemove', handleViewerMouseMove);
     viewerVideo.removeEventListener('wheel', handleViewerWheel);
     viewerVideo.removeEventListener('contextmenu', handleViewerContextMenu);
+    viewerVideo.removeEventListener('click', handleViewerClick);
+    viewerVideo.removeEventListener('dblclick', handleViewerClick);
+    viewerVideo.removeEventListener('play', preventVideoControls);
+    viewerVideo.removeEventListener('pause', preventVideoControls);
 
     // Remove focusable attribute
     viewerVideo.removeAttribute('tabindex');
   }
 
   document.removeEventListener('keydown', handleViewerDocumentKeyDown);
+}
+
+// Prevent video clicks from pausing the video
+function handleViewerClick(event) {
+  if (isRemoteControlActive) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }
+}
+
+// Prevent video from pausing during remote control
+function preventVideoControls(event) {
+  if (isRemoteControlActive) {
+    // If the video is paused, play it
+    if (viewerVideo.paused) {
+      viewerVideo.play().catch(err => console.error('Error playing video:', err));
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }
 }
 
 // Viewer: Handle keyboard events
@@ -2135,6 +2188,24 @@ function stopRemoteControl() {
       removeRemoteControlListeners();
     } else {
       removeViewerRemoteControlListeners();
+
+      // Remove remote control class from video
+      if (remoteVideo) {
+        remoteVideo.classList.remove('remote-control-active');
+      }
+
+      // Update button visibility
+      if (requestRemoteControlBtn) {
+        requestRemoteControlBtn.style.display = 'inline-block';
+      }
+      if (stopRemoteControlBtn) {
+        stopRemoteControlBtn.style.display = 'none';
+      }
+
+      // Ensure video is still playing
+      if (remoteVideo && remoteVideo.paused) {
+        remoteVideo.play().catch(err => console.error('Error playing video:', err));
+      }
     }
   }
 }
@@ -2149,5 +2220,34 @@ function requestRemoteControl() {
   }
 }
 
+// Ensure video plays automatically
+function ensureVideoPlays() {
+  if (remoteVideo) {
+    // Add event listener for when video can play
+    remoteVideo.oncanplay = () => {
+      if (remoteVideo.paused) {
+        console.info('Video can play, starting playback...');
+        remoteVideo.play().catch(err => console.error('Error auto-playing video:', err));
+      }
+    };
+
+    // Also try to play when the source is set
+    const originalSrcObject = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'srcObject');
+    Object.defineProperty(remoteVideo, 'srcObject', {
+      get: function() {
+        return originalSrcObject.get.call(this);
+      },
+      set: function(value) {
+        originalSrcObject.set.call(this, value);
+        if (value) {
+          console.info('Video source set, attempting to play...');
+          this.play().catch(err => console.error('Error playing video after setting source:', err));
+        }
+      }
+    });
+  }
+}
+
 // Initialize
 checkUrlForStreamId();
+ensureVideoPlays();
