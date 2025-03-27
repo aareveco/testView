@@ -63,6 +63,9 @@ const activeStreams = new Map();
 // Store socket to stream ID mapping
 const socketToStreamId = new Map();
 
+// Store remote control sessions
+const remoteControlSessions = new Map(); // { streamId: { hostId, viewerId, active } }
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
@@ -217,6 +220,148 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Remote Control Functionality
+
+  // Remote control request from viewer
+  socket.on('request-remote-control', (data) => {
+    const streamId = data.streamId;
+    console.log('Remote control requested for stream:', streamId);
+
+    if (activeStreams.has(streamId)) {
+      const stream = activeStreams.get(streamId);
+      const hostSocket = io.sockets.sockets.get(stream.hostId);
+
+      if (hostSocket) {
+        // Forward the request to the host
+        hostSocket.emit('remote-control-requested', {
+          streamId: streamId,
+          viewerId: socket.id
+        });
+
+        // Create a pending remote control session
+        remoteControlSessions.set(streamId, {
+          hostId: stream.hostId,
+          viewerId: socket.id,
+          active: false,
+          pending: true
+        });
+
+        socket.emit('remote-control-request-sent', { streamId });
+      } else {
+        socket.emit('remote-control-error', {
+          streamId,
+          error: 'Host not connected'
+        });
+      }
+    } else {
+      socket.emit('remote-control-error', {
+        streamId,
+        error: 'Stream not found'
+      });
+    }
+  });
+
+  // Remote control response from host
+  socket.on('remote-control-response', (data) => {
+    const { streamId, viewerId, accepted } = data;
+    console.log(`Remote control ${accepted ? 'accepted' : 'rejected'} for stream:`, streamId);
+
+    if (remoteControlSessions.has(streamId)) {
+      const session = remoteControlSessions.get(streamId);
+      const viewerSocket = io.sockets.sockets.get(viewerId);
+
+      if (viewerSocket) {
+        if (accepted) {
+          // Update the session to active
+          session.active = true;
+          session.pending = false;
+          remoteControlSessions.set(streamId, session);
+
+          // Notify the viewer
+          viewerSocket.emit('remote-control-accepted', { streamId });
+
+          // Notify the host
+          socket.emit('remote-control-started', {
+            streamId,
+            viewerId
+          });
+        } else {
+          // Remove the session
+          remoteControlSessions.delete(streamId);
+
+          // Notify the viewer
+          viewerSocket.emit('remote-control-rejected', { streamId });
+        }
+      } else {
+        // Viewer disconnected
+        remoteControlSessions.delete(streamId);
+        socket.emit('remote-control-error', {
+          streamId,
+          error: 'Viewer disconnected'
+        });
+      }
+    } else {
+      socket.emit('remote-control-error', {
+        streamId,
+        error: 'No pending remote control request'
+      });
+    }
+  });
+
+  // Stop remote control from either host or viewer
+  socket.on('stop-remote-control', (data) => {
+    const { streamId } = data;
+    console.log('Stopping remote control for stream:', streamId);
+
+    if (remoteControlSessions.has(streamId)) {
+      const session = remoteControlSessions.get(streamId);
+      const hostSocket = io.sockets.sockets.get(session.hostId);
+      const viewerSocket = io.sockets.sockets.get(session.viewerId);
+
+      // Notify both parties
+      if (hostSocket && hostSocket.id !== socket.id) {
+        hostSocket.emit('remote-control-ended', { streamId });
+      }
+
+      if (viewerSocket && viewerSocket.id !== socket.id) {
+        viewerSocket.emit('remote-control-ended', { streamId });
+      }
+
+      // Remove the session
+      remoteControlSessions.delete(streamId);
+
+      // Confirm to the requester
+      socket.emit('remote-control-stopped', { streamId });
+    } else {
+      socket.emit('remote-control-error', {
+        streamId,
+        error: 'No active remote control session'
+      });
+    }
+  });
+
+  // Forward remote control events from viewer to host
+  socket.on('remote-control-event', (data) => {
+    const { streamId, eventType, eventData } = data;
+
+    if (remoteControlSessions.has(streamId)) {
+      const session = remoteControlSessions.get(streamId);
+
+      // Only forward if the session is active and the sender is the viewer
+      if (session.active && session.viewerId === socket.id) {
+        const hostSocket = io.sockets.sockets.get(session.hostId);
+
+        if (hostSocket) {
+          hostSocket.emit('remote-control-event', {
+            streamId,
+            eventType,
+            eventData
+          });
+        }
+      }
+    }
+  });
+
   // Handle disconnection
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
@@ -228,6 +373,19 @@ io.on('connection', (socket) => {
       const streamInfo = activeStreams.get(streamId);
       console.log('Stream stopped (host disconnected):', streamId);
 
+      // End any remote control sessions for this stream
+      if (remoteControlSessions.has(streamId)) {
+        const session = remoteControlSessions.get(streamId);
+        if (session.active) {
+          // Notify the viewer that remote control has ended
+          const viewerSocket = io.sockets.sockets.get(session.viewerId);
+          if (viewerSocket) {
+            viewerSocket.emit('remote-control-ended', { streamId });
+          }
+        }
+        remoteControlSessions.delete(streamId);
+      }
+
       // Remove stream from active streams
       activeStreams.delete(streamId);
       socketToStreamId.delete(socket.id);
@@ -237,6 +395,22 @@ io.on('connection', (socket) => {
         id: streamId,
         hostId: socket.id
       });
+    }
+
+    // Check if this socket was a viewer with remote control
+    for (const [streamId, session] of remoteControlSessions.entries()) {
+      if (session.viewerId === socket.id) {
+        console.log('Viewer with remote control disconnected, ending session:', streamId);
+
+        // Notify the host that remote control has ended
+        const hostSocket = io.sockets.sockets.get(session.hostId);
+        if (hostSocket) {
+          hostSocket.emit('remote-control-ended', { streamId });
+        }
+
+        remoteControlSessions.delete(streamId);
+        break;
+      }
     }
   });
 });

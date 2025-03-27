@@ -216,6 +216,8 @@ const remoteVideo = document.getElementById('remoteVideo');
 const streamTitle = document.getElementById('streamTitle');
 const disconnectBtn = document.getElementById('disconnectBtn');
 const shareViewerBtn = document.getElementById('shareViewerBtn');
+const requestRemoteControlBtn = document.getElementById('requestRemoteControlBtn');
+const stopRemoteControlBtn = document.getElementById('stopRemoteControlBtn');
 const currentStreamId = document.getElementById('currentStreamId');
 const connectionStatus = document.getElementById('connectionStatus');
 const streamResolution = document.getElementById('streamResolution');
@@ -229,6 +231,8 @@ let serverData = null;
 let isStreaming = false;
 let activeStreamId = null;
 let isDirectConnection = false; // Flag for direct connection vs. ngrok
+let isRemoteControlActive = false; // Flag for remote control status
+let remoteControlViewerId = null; // ID of the viewer with remote control
 
 // Viewer mode variables
 let peerConnection = null;
@@ -635,6 +639,115 @@ async function connectToSignalingServer() {
           console.info('Socket reconnected after', attempt, 'attempts');
           clearTimeout(connectionTimeout);
           resolve();
+        });
+
+        // Remote control events
+
+        // Host: Remote control request from viewer
+        socket.on('remote-control-requested', (data) => {
+          console.info('Remote control requested by viewer:', data.viewerId);
+
+          // Show confirmation dialog
+          const confirmed = confirm('A viewer has requested remote control of your screen. Allow?');
+
+          // Send response to server
+          socket.emit('remote-control-response', {
+            streamId: data.streamId,
+            viewerId: data.viewerId,
+            accepted: confirmed
+          });
+        });
+
+        // Host: Remote control started
+        socket.on('remote-control-started', (data) => {
+          console.info('Remote control started for viewer:', data.viewerId);
+
+          // Update state
+          isRemoteControlActive = true;
+          remoteControlViewerId = data.viewerId;
+
+          // Update UI
+          showStatus('Remote control active - press ESC to stop');
+
+          // Add event listeners for keyboard and mouse events
+          setupRemoteControlListeners();
+        });
+
+        // Host: Remote control event from viewer
+        socket.on('remote-control-event', (data) => {
+          if (isRemoteControlActive) {
+            handleRemoteControlEvent(data.eventType, data.eventData);
+          }
+        });
+
+        // Both: Remote control ended
+        socket.on('remote-control-ended', (data) => {
+          console.info('Remote control ended for stream:', data.streamId);
+
+          // Update state
+          isRemoteControlActive = false;
+          remoteControlViewerId = null;
+
+          // Update UI
+          showStatus('Remote control ended');
+
+          // Remove event listeners
+          removeRemoteControlListeners();
+        });
+
+        // Viewer: Remote control request response
+        socket.on('remote-control-request-sent', (data) => {
+          console.info('Remote control request sent for stream:', data.streamId);
+          showStatus('Remote control request sent to host...');
+        });
+
+        // Viewer: Remote control accepted
+        socket.on('remote-control-accepted', (data) => {
+          console.info('Remote control accepted for stream:', data.streamId);
+
+          // Update state
+          isRemoteControlActive = true;
+
+          // Update UI
+          showStatus('Remote control active - click on the video to control');
+
+          // Add event listeners to the video element
+          setupViewerRemoteControlListeners();
+        });
+
+        // Viewer: Remote control rejected
+        socket.on('remote-control-rejected', (data) => {
+          console.info('Remote control rejected for stream:', data.streamId);
+          showStatus('Remote control request rejected by host', true);
+        });
+
+        // Both: Remote control error
+        socket.on('remote-control-error', (data) => {
+          console.error('Remote control error:', data.error);
+          showStatus(`Remote control error: ${data.error}`, true);
+
+          // Reset state
+          isRemoteControlActive = false;
+          remoteControlViewerId = null;
+
+          // Remove event listeners
+          if (isStreaming) {
+            removeRemoteControlListeners();
+          } else {
+            removeViewerRemoteControlListeners();
+          }
+        });
+
+        // Both: Remote control stopped confirmation
+        socket.on('remote-control-stopped', (data) => {
+          console.info('Remote control stopped for stream:', data.streamId);
+
+          // Update state
+          isRemoteControlActive = false;
+          remoteControlViewerId = null;
+
+          // Update UI
+          showStatus('Remote control stopped');
         });
       });
 
@@ -1532,6 +1645,20 @@ shareViewerBtn.addEventListener('click', () => {
   }
 });
 
+// Request remote control button
+requestRemoteControlBtn.addEventListener('click', () => {
+  requestRemoteControl();
+  requestRemoteControlBtn.style.display = 'none';
+  stopRemoteControlBtn.style.display = 'inline-block';
+});
+
+// Stop remote control button
+stopRemoteControlBtn.addEventListener('click', () => {
+  stopRemoteControl();
+  stopRemoteControlBtn.style.display = 'none';
+  requestRemoteControlBtn.style.display = 'inline-block';
+});
+
 // Debug button
 debugBtn.addEventListener('click', () => {
   if (debugInfoElement.style.display === 'none' || !debugInfoElement.style.display) {
@@ -1625,6 +1752,379 @@ if (openDevToolsBtn) {
 // Show debug console by default
 debugConsoleContainer.style.display = 'block';
 console.log('Debug console initialized');
+
+// Remote Control Functions
+
+// Host: Set up remote control listeners
+function setupRemoteControlListeners() {
+  // Add keyboard event listener
+  document.addEventListener('keydown', handleHostKeyDown);
+
+  // Add mouse event listeners if we have a local stream video element
+  if (hostVideo) {
+    hostVideo.addEventListener('mousedown', handleHostMouseDown);
+    hostVideo.addEventListener('mouseup', handleHostMouseUp);
+    hostVideo.addEventListener('mousemove', handleHostMouseMove);
+    hostVideo.addEventListener('wheel', handleHostWheel);
+    hostVideo.addEventListener('contextmenu', handleHostContextMenu);
+  }
+}
+
+// Host: Remove remote control listeners
+function removeRemoteControlListeners() {
+  document.removeEventListener('keydown', handleHostKeyDown);
+
+  if (hostVideo) {
+    hostVideo.removeEventListener('mousedown', handleHostMouseDown);
+    hostVideo.removeEventListener('mouseup', handleHostMouseUp);
+    hostVideo.removeEventListener('mousemove', handleHostMouseMove);
+    hostVideo.removeEventListener('wheel', handleHostWheel);
+    hostVideo.removeEventListener('contextmenu', handleHostContextMenu);
+  }
+}
+
+// Host: Handle keyboard events
+function handleHostKeyDown(event) {
+  if (isRemoteControlActive) {
+    // Check for ESC key to stop remote control
+    if (event.key === 'Escape') {
+      stopRemoteControl();
+      return;
+    }
+
+    // Forward the key event to the server
+    socket.emit('remote-control-event', {
+      streamId: activeStreamId,
+      eventType: 'keydown',
+      eventData: {
+        key: event.key,
+        code: event.code,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey
+      }
+    });
+  }
+}
+
+// Host: Handle mouse events
+function handleHostMouseDown(event) {
+  if (isRemoteControlActive) {
+    const rect = hostVideo.getBoundingClientRect();
+    const scaleX = hostVideo.videoWidth / rect.width;
+    const scaleY = hostVideo.videoHeight / rect.height;
+
+    socket.emit('remote-control-event', {
+      streamId: activeStreamId,
+      eventType: 'mousedown',
+      eventData: {
+        button: event.button,
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      }
+    });
+  }
+}
+
+function handleHostMouseUp(event) {
+  if (isRemoteControlActive) {
+    const rect = hostVideo.getBoundingClientRect();
+    const scaleX = hostVideo.videoWidth / rect.width;
+    const scaleY = hostVideo.videoHeight / rect.height;
+
+    socket.emit('remote-control-event', {
+      streamId: activeStreamId,
+      eventType: 'mouseup',
+      eventData: {
+        button: event.button,
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      }
+    });
+  }
+}
+
+function handleHostMouseMove(event) {
+  if (isRemoteControlActive) {
+    const rect = hostVideo.getBoundingClientRect();
+    const scaleX = hostVideo.videoWidth / rect.width;
+    const scaleY = hostVideo.videoHeight / rect.height;
+
+    socket.emit('remote-control-event', {
+      streamId: activeStreamId,
+      eventType: 'mousemove',
+      eventData: {
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      }
+    });
+  }
+}
+
+function handleHostWheel(event) {
+  if (isRemoteControlActive) {
+    socket.emit('remote-control-event', {
+      streamId: activeStreamId,
+      eventType: 'wheel',
+      eventData: {
+        deltaX: event.deltaX,
+        deltaY: event.deltaY
+      }
+    });
+
+    // Prevent default scrolling
+    event.preventDefault();
+  }
+}
+
+function handleHostContextMenu(event) {
+  if (isRemoteControlActive) {
+    // Prevent the context menu from appearing
+    event.preventDefault();
+  }
+}
+
+// Viewer: Set up remote control listeners
+function setupViewerRemoteControlListeners() {
+  if (viewerVideo) {
+    viewerVideo.addEventListener('keydown', handleViewerKeyDown);
+    viewerVideo.addEventListener('mousedown', handleViewerMouseDown);
+    viewerVideo.addEventListener('mouseup', handleViewerMouseUp);
+    viewerVideo.addEventListener('mousemove', handleViewerMouseMove);
+    viewerVideo.addEventListener('wheel', handleViewerWheel);
+    viewerVideo.addEventListener('contextmenu', handleViewerContextMenu);
+
+    // Make the video element focusable
+    viewerVideo.setAttribute('tabindex', '0');
+    viewerVideo.focus();
+  }
+
+  // Add ESC key listener to document to stop remote control
+  document.addEventListener('keydown', handleViewerDocumentKeyDown);
+}
+
+// Viewer: Remove remote control listeners
+function removeViewerRemoteControlListeners() {
+  if (viewerVideo) {
+    viewerVideo.removeEventListener('keydown', handleViewerKeyDown);
+    viewerVideo.removeEventListener('mousedown', handleViewerMouseDown);
+    viewerVideo.removeEventListener('mouseup', handleViewerMouseUp);
+    viewerVideo.removeEventListener('mousemove', handleViewerMouseMove);
+    viewerVideo.removeEventListener('wheel', handleViewerWheel);
+    viewerVideo.removeEventListener('contextmenu', handleViewerContextMenu);
+
+    // Remove focusable attribute
+    viewerVideo.removeAttribute('tabindex');
+  }
+
+  document.removeEventListener('keydown', handleViewerDocumentKeyDown);
+}
+
+// Viewer: Handle keyboard events
+function handleViewerKeyDown(event) {
+  if (isRemoteControlActive) {
+    socket.emit('remote-control-event', {
+      streamId: currentStreamId,
+      eventType: 'keydown',
+      eventData: {
+        key: event.key,
+        code: event.code,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey
+      }
+    });
+
+    // Prevent default browser behavior for most keys
+    if (event.key !== 'F5' && !(event.ctrlKey && event.key === 'r')) {
+      event.preventDefault();
+    }
+  }
+}
+
+function handleViewerDocumentKeyDown(event) {
+  if (isRemoteControlActive && event.key === 'Escape') {
+    stopRemoteControl();
+    event.preventDefault();
+  }
+}
+
+// Viewer: Handle mouse events
+function handleViewerMouseDown(event) {
+  if (isRemoteControlActive) {
+    const rect = viewerVideo.getBoundingClientRect();
+    const scaleX = viewerVideo.videoWidth / rect.width;
+    const scaleY = viewerVideo.videoHeight / rect.height;
+
+    socket.emit('remote-control-event', {
+      streamId: currentStreamId,
+      eventType: 'mousedown',
+      eventData: {
+        button: event.button,
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      }
+    });
+
+    event.preventDefault();
+  }
+}
+
+function handleViewerMouseUp(event) {
+  if (isRemoteControlActive) {
+    const rect = viewerVideo.getBoundingClientRect();
+    const scaleX = viewerVideo.videoWidth / rect.width;
+    const scaleY = viewerVideo.videoHeight / rect.height;
+
+    socket.emit('remote-control-event', {
+      streamId: currentStreamId,
+      eventType: 'mouseup',
+      eventData: {
+        button: event.button,
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      }
+    });
+
+    event.preventDefault();
+  }
+}
+
+function handleViewerMouseMove(event) {
+  if (isRemoteControlActive) {
+    const rect = viewerVideo.getBoundingClientRect();
+    const scaleX = viewerVideo.videoWidth / rect.width;
+    const scaleY = viewerVideo.videoHeight / rect.height;
+
+    socket.emit('remote-control-event', {
+      streamId: currentStreamId,
+      eventType: 'mousemove',
+      eventData: {
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      }
+    });
+  }
+}
+
+function handleViewerWheel(event) {
+  if (isRemoteControlActive) {
+    socket.emit('remote-control-event', {
+      streamId: currentStreamId,
+      eventType: 'wheel',
+      eventData: {
+        deltaX: event.deltaX,
+        deltaY: event.deltaY
+      }
+    });
+
+    // Prevent default scrolling
+    event.preventDefault();
+  }
+}
+
+function handleViewerContextMenu(event) {
+  if (isRemoteControlActive) {
+    // Prevent the context menu from appearing
+    event.preventDefault();
+  }
+}
+
+// Host: Handle remote control events from viewer
+function handleRemoteControlEvent(eventType, eventData) {
+  switch (eventType) {
+    case 'keydown':
+      simulateKeyEvent(eventData);
+      break;
+    case 'mousedown':
+      simulateMouseEvent('mousedown', eventData);
+      break;
+    case 'mouseup':
+      simulateMouseEvent('mouseup', eventData);
+      break;
+    case 'mousemove':
+      simulateMouseEvent('mousemove', eventData);
+      break;
+    case 'wheel':
+      simulateWheelEvent(eventData);
+      break;
+    default:
+      console.warn('Unknown remote control event type:', eventType);
+  }
+}
+
+// Host: Simulate keyboard event
+function simulateKeyEvent(eventData) {
+  // For Electron, we would use the robotjs or similar library
+  // This is a placeholder for the actual implementation
+  robot.keyTap(eventData.key);
+  console.info('Simulating key event:', eventData.key);
+
+  // In a real implementation, we would use a native module to simulate key presses
+  // For example, with robotjs: robot.keyTap(eventData.key);
+}
+
+// Host: Simulate mouse event
+function simulateMouseEvent(type, eventData) {
+  // For Electron, we would use the robotjs or similar library
+  // This is a placeholder for the actual implementation
+  if (type === 'mousemove') {
+    robot.moveMouse(eventData.x, eventData.y);
+  } else if (type === 'mousedown' || type === 'mouseup') {
+    robot.mouseToggle(type === 'mousedown' ? 'down' : 'up', eventData.button === 0 ? 'left' : 'right');
+  }
+  console.info('Simulating mouse event:', type, eventData);
+
+  // In a real implementation, we would use a native module to simulate mouse events
+  // For example, with robotjs: robot.moveMouse(eventData.x, eventData.y);
+  // and robot.mouseClick() for clicks
+}
+
+// Host: Simulate wheel event
+function simulateWheelEvent(eventData) {
+  // For Electron, we would use the robotjs or similar library
+  // This is a placeholder for the actual implementation
+  robot.scrollMouse(eventData.deltaX, eventData.deltaY);
+  console.info('Simulating wheel event:', eventData);
+
+  // In a real implementation, we would use a native module to simulate wheel events
+  // For example, with robotjs: robot.scrollMouse(eventData.deltaX, eventData.deltaY);
+}
+
+// Both: Stop remote control
+function stopRemoteControl() {
+  if (isRemoteControlActive) {
+    const streamId = isStreaming ? activeStreamId : currentStreamId;
+
+    socket.emit('stop-remote-control', { streamId });
+
+    // Update state
+    isRemoteControlActive = false;
+    remoteControlViewerId = null;
+
+    // Update UI
+    showStatus('Stopping remote control...');
+
+    // Remove event listeners
+    if (isStreaming) {
+      removeRemoteControlListeners();
+    } else {
+      removeViewerRemoteControlListeners();
+    }
+  }
+}
+
+// Viewer: Request remote control
+function requestRemoteControl() {
+  if (socket && currentStreamId) {
+    socket.emit('request-remote-control', { streamId: currentStreamId });
+    showStatus('Requesting remote control...');
+  } else {
+    showStatus('Cannot request remote control: not connected to a stream', true);
+  }
+}
 
 // Initialize
 checkUrlForStreamId();
