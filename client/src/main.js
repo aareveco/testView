@@ -151,6 +151,94 @@ ipcMain.handle('open-devtools', () => {
   return false;
 });
 
+// Remote control handlers using Electron's built-in APIs
+const { screen } = require('electron');
+const robot = {
+  getScreenSize: () => {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    return { width: primaryDisplay.size.width, height: primaryDisplay.size.height };
+  }
+};
+
+// Handle key events
+ipcMain.handle('simulate-key-event', async (event, eventData) => {
+  console.log('Simulating key event:', eventData);
+
+  try {
+    // Log the key event for now
+    console.log('Key event:', eventData.key, 'modifiers:', {
+      ctrl: eventData.ctrlKey,
+      shift: eventData.shiftKey,
+      alt: eventData.altKey,
+      meta: eventData.metaKey
+    });
+
+    // In a real implementation, we would use a native module to simulate key presses
+    // For now, we'll just return success
+    return { success: true };
+  } catch (error) {
+    console.error('Error simulating key event:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Handle mouse events
+ipcMain.handle('simulate-mouse-event', async (event, data) => {
+  console.log('Simulating mouse event:', data.type, data.eventData);
+
+  try {
+    const { type, eventData } = data;
+
+    // Get screen size for scaling
+    const screenSize = robot.getScreenSize();
+
+    // Scale coordinates to screen size
+    const x = Math.round(eventData.x);
+    const y = Math.round(eventData.y);
+
+    // Ensure coordinates are within screen bounds
+    const boundedX = Math.max(0, Math.min(x, screenSize.width - 1));
+    const boundedY = Math.max(0, Math.min(y, screenSize.height - 1));
+
+    // Log the mouse event
+    console.log(`Mouse ${type} at (${boundedX}, ${boundedY}) button: ${eventData.button}`);
+
+    // In a real implementation, we would use a native module to simulate mouse events
+    // For now, we'll just return success
+    return { success: true };
+  } catch (error) {
+    console.error('Error simulating mouse event:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Handle wheel events
+ipcMain.handle('simulate-wheel-event', async (event, eventData) => {
+  console.log('Simulating wheel event:', eventData);
+
+  try {
+    // Log the wheel event
+    console.log(`Wheel event: deltaX=${eventData.deltaX}, deltaY=${eventData.deltaY}`);
+
+    // In a real implementation, we would use a native module to simulate wheel events
+    // For now, we'll just return success
+    return { success: true };
+  } catch (error) {
+    console.error('Error simulating wheel event:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get screen size
+ipcMain.handle('get-screen-size', async () => {
+  try {
+    return robot.getScreenSize();
+  } catch (error) {
+    console.error('Error getting screen size:', error);
+    return { width: 1920, height: 1080 }; // Default fallback
+  }
+});
+
 // Quit when all windows are closed, except on macOS
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') {

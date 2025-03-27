@@ -674,9 +674,9 @@ async function connectToSignalingServer() {
         });
 
         // Host: Remote control event from viewer
-        socket.on('remote-control-event', (data) => {
+        socket.on('remote-control-event', async (data) => {
           if (isRemoteControlActive) {
-            handleRemoteControlEvent(data.eventType, data.eventData);
+            await handleRemoteControlEvent(data.eventType, data.eventData);
           }
         });
 
@@ -2033,64 +2033,87 @@ function handleViewerContextMenu(event) {
 }
 
 // Host: Handle remote control events from viewer
-function handleRemoteControlEvent(eventType, eventData) {
-  switch (eventType) {
-    case 'keydown':
-      simulateKeyEvent(eventData);
-      break;
-    case 'mousedown':
-      simulateMouseEvent('mousedown', eventData);
-      break;
-    case 'mouseup':
-      simulateMouseEvent('mouseup', eventData);
-      break;
-    case 'mousemove':
-      simulateMouseEvent('mousemove', eventData);
-      break;
-    case 'wheel':
-      simulateWheelEvent(eventData);
-      break;
-    default:
-      console.warn('Unknown remote control event type:', eventType);
+async function handleRemoteControlEvent(eventType, eventData) {
+  try {
+    switch (eventType) {
+      case 'keydown':
+        await simulateKeyEvent(eventData);
+        break;
+      case 'mousedown':
+        await simulateMouseEvent('mousedown', eventData);
+        break;
+      case 'mouseup':
+        await simulateMouseEvent('mouseup', eventData);
+        break;
+      case 'mousemove':
+        await simulateMouseEvent('mousemove', eventData);
+        break;
+      case 'wheel':
+        await simulateWheelEvent(eventData);
+        break;
+      default:
+        console.warn('Unknown remote control event type:', eventType);
+    }
+  } catch (error) {
+    console.error('Error handling remote control event:', error);
   }
 }
 
 // Host: Simulate keyboard event
-function simulateKeyEvent(eventData) {
-  // For Electron, we would use the robotjs or similar library
-  // This is a placeholder for the actual implementation
-  robot.keyTap(eventData.key);
+async function simulateKeyEvent(eventData) {
   console.info('Simulating key event:', eventData.key);
 
-  // In a real implementation, we would use a native module to simulate key presses
-  // For example, with robotjs: robot.keyTap(eventData.key);
+  try {
+    // Use the electronAPI to simulate key events
+    const result = await window.electronAPI.simulateKeyEvent(eventData);
+
+    if (!result.success) {
+      console.error('Error simulating key event:', result.error);
+    }
+
+    return result.success;
+  } catch (error) {
+    console.error('Error calling simulateKeyEvent:', error);
+    return false;
+  }
 }
 
 // Host: Simulate mouse event
-function simulateMouseEvent(type, eventData) {
-  // For Electron, we would use the robotjs or similar library
-  // This is a placeholder for the actual implementation
-  if (type === 'mousemove') {
-    robot.moveMouse(eventData.x, eventData.y);
-  } else if (type === 'mousedown' || type === 'mouseup') {
-    robot.mouseToggle(type === 'mousedown' ? 'down' : 'up', eventData.button === 0 ? 'left' : 'right');
-  }
+async function simulateMouseEvent(type, eventData) {
   console.info('Simulating mouse event:', type, eventData);
 
-  // In a real implementation, we would use a native module to simulate mouse events
-  // For example, with robotjs: robot.moveMouse(eventData.x, eventData.y);
-  // and robot.mouseClick() for clicks
+  try {
+    // Use the electronAPI to simulate mouse events
+    const result = await window.electronAPI.simulateMouseEvent(type, eventData);
+
+    if (!result.success) {
+      console.error('Error simulating mouse event:', result.error);
+    }
+
+    return result.success;
+  } catch (error) {
+    console.error('Error calling simulateMouseEvent:', error);
+    return false;
+  }
 }
 
 // Host: Simulate wheel event
-function simulateWheelEvent(eventData) {
-  // For Electron, we would use the robotjs or similar library
-  // This is a placeholder for the actual implementation
-  robot.scrollMouse(eventData.deltaX, eventData.deltaY);
+async function simulateWheelEvent(eventData) {
   console.info('Simulating wheel event:', eventData);
 
-  // In a real implementation, we would use a native module to simulate wheel events
-  // For example, with robotjs: robot.scrollMouse(eventData.deltaX, eventData.deltaY);
+  try {
+    // Use the electronAPI to simulate wheel events
+    const result = await window.electronAPI.simulateWheelEvent(eventData);
+
+    if (!result.success) {
+      console.error('Error simulating wheel event:', result.error);
+    }
+
+    return result.success;
+  } catch (error) {
+    console.error('Error calling simulateWheelEvent:', error);
+    return false;
+  }
 }
 
 // Both: Stop remote control

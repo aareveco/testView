@@ -10,7 +10,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
   // DevTools
-  openDevTools: () => ipcRenderer.invoke('open-devtools')
+  openDevTools: () => ipcRenderer.invoke('open-devtools'),
+
+  // Remote control
+  simulateKeyEvent: (eventData) => ipcRenderer.invoke('simulate-key-event', eventData),
+  simulateMouseEvent: (type, eventData) => ipcRenderer.invoke('simulate-mouse-event', { type, eventData }),
+  simulateWheelEvent: (eventData) => ipcRenderer.invoke('simulate-wheel-event', eventData),
+  getScreenSize: () => ipcRenderer.invoke('get-screen-size')
 });
 
 // Expose environment variables to the renderer process

@@ -5,7 +5,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "start-alt": "electron . --no-sandbox"
+    "start-alt": "electron . --no-sandbox",
+    "rebuild": "electron-rebuild"
   },
   "keywords": [],
   "author": "",
@@ -13,7 +14,9 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "electron": "^35.1.1",
-    "robotjs": "^0.6.0",
     "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "electron-rebuild": "^3.2.9"
   }
 }
