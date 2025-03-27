@@ -1,0 +1,17 @@
+{
+  "name": "screen-share-server",
+  "version": "1.0.0",
+  "description": "Standalone server for screen sharing application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.8.1",
+    "uuid": "^9.0.1"
+  }
+}

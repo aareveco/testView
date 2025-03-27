@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Remote Screen Viewer</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      color: #2c3e50;
+      margin-top: 0;
+    }
+    .stream-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    .stream-item {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s;
+      width: 200px;
+      text-align: center;
+    }
+    .stream-item:hover {
+      border-color: #4CAF50;
+      background-color: #f9f9f9;
+    }
+    .stream-item h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+    }
+    .stream-item p {
+      margin: 5px 0;
+      color: #666;
+    }
+    .video-container {
+      margin-top: 20px;
+      display: none;
+    }
+    video {
+      width: 100%;
+      max-height: 80vh;
+      border-radius: 4px;
+      background-color: #000;
+    }
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 15px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button.disconnect {
+      background-color: #f44336;
+    }
+    button.disconnect:hover {
+      background-color: #d32f2f;
+    }
+    .status {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      background-color: #f8f9fa;
+      display: none;
+    }
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .no-streams {
+      text-align: center;
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      margin-top: 20px;
+      display: none;
+    }
+    .fullscreen-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 5px 10px;
+      cursor: pointer;
+      z-index: 10;
+    }
+    .stream-id-form {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f0f8ff;
+      border-radius: 4px;
+    }
+    .stream-id-form input {
+      padding: 8px;
+      width: 300px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-right: 10px;
+    }
+    .debug-panel {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Remote Screen Viewer</h1>
+    
+    <div class="stream-id-form">
+      <h2>Connect to Stream</h2>
+      <p>Enter a stream ID to connect directly:</p>
+      <input type="text" id="streamIdInput" placeholder="Stream ID">
+      <button id="connectToStreamBtn">Connect</button>
+    </div>
+    
+    <div id="streamSelection">
+      <h2>Available Streams</h2>
+      <div class="stream-list" id="streamList"></div>
+      <div class="no-streams" id="noStreams">No streams available. Waiting for hosts to start streaming...</div>
+    </div>
+    
+    <div class="video-container" id="videoContainer">
+      <h2 id="streamTitle">Viewing Stream</h2>
+      <div style="position: relative;">
+        <video id="remoteVideo" autoplay playsinline controls></video>
+        <button class="fullscreen-btn" id="fullscreenBtn">Fullscreen</button>
+      </div>
+      <div class="controls">
+        <button id="disconnectBtn" class="disconnect">Disconnect</button>
+        <button id="shareBtn">Share Link</button>
+      </div>
+      <div class="debug-panel">
+        <div>
+          <strong>Stream ID:</strong> <span id="currentStreamId">None</span>
+        </div>
+        <div>
+          <strong>Connection Status:</strong> <span id="connectionStatus">Not connected</span>
+        </div>
+        <div>
+          <strong>Resolution:</strong> <span id="streamResolution">Unknown</span>
+        </div>
+        <button id="debugBtn">Show Debug Info</button>
+        <div id="debugInfo" class="debug-info" style="display: none;"></div>
+      </div>
+    </div>
+    
+    <div class="status" id="statusMessage"></div>
+  </div>
+
+  <script>
+    // DOM elements
+    const streamIdInput = document.getElementById('streamIdInput');
+    const connectToStreamBtn = document.getElementById('connectToStreamBtn');
+    const streamList = document.getElementById('streamList');
+    const noStreams = document.getElementById('noStreams');
+    const streamSelection = document.getElementById('streamSelection');
+    const videoContainer = document.getElementById('videoContainer');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const streamTitle = document.getElementById('streamTitle');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const shareBtn = document.getElementById('shareBtn');
+    const statusMessage = document.getElementById('statusMessage');
+    const currentStreamId = document.getElementById('currentStreamId');
+    const connectionStatus = document.getElementById('connectionStatus');
+    const streamResolution = document.getElementById('streamResolution');
+    const debugBtn = document.getElementById('debugBtn');
+    const debugInfo = document.getElementById('debugInfo');
+    
+    // WebRTC configuration
+    const peerConnectionConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ],
+      // Use more compatible options
+      sdpSemantics: 'unified-plan',
+      iceTransportPolicy: 'all',
+      // Use balanced policy instead of max-bundle
+      bundlePolicy: 'balanced',
+      rtcpMuxPolicy: 'require'
+    };
+    
+    // Connect to Socket.IO server
+    const socket = io();
+    
+    // Variables
+    let peerConnection;
+    let currentHostId;
+    let activeStreamId;
+    
+    // Check if we have a stream ID in the URL
+    const pathParts = window.location.pathname.split('/');
+    const urlStreamId = pathParts[pathParts.length - 1];
+    
+    if (urlStreamId && urlStreamId !== 'view') {
+      // Auto-connect to the stream ID from URL
+      streamIdInput.value = urlStreamId;
+      setTimeout(() => {
+        connectToStream(urlStreamId);
+      }, 1000);
+    }
+    
+    // Show status message
+    function showStatus(message, isError = false) {
+      statusMessage.textContent = message;
+      statusMessage.style.display = 'block';
+      
+      if (isError) {
+        statusMessage.classList.add('error');
+      } else {
+        statusMessage.classList.remove('error');
+      }
+      
+      // Hide after 5 seconds if not an error
+      if (!isError) {
+        setTimeout(() => {
+          statusMessage.style.display = 'none';
+        }, 5000);
+      }
+    }
+    
+    // Update the stream list
+    function updateStreamList(streams) {
+      streamList.innerHTML = '';
+      
+      if (streams.length === 0) {
+        noStreams.style.display = 'block';
+        return;
+      }
+      
+      noStreams.style.display = 'none';
+      
+      streams.forEach(stream => {
+        const streamItem = document.createElement('div');
+        streamItem.className = 'stream-item';
+        
+        const title = document.createElement('h3');
+        title.textContent = stream.name || 'Unnamed Stream';
+        
+        const id = document.createElement('p');
+        id.textContent = `ID: ${stream.id}`;
+        
+        const time = document.createElement('p');
+        const createdAt = new Date(stream.createdAt);
+        time.textContent = `Started: ${createdAt.toLocaleTimeString()}`;
+        
+        streamItem.appendChild(title);
+        streamItem.appendChild(id);
+        streamItem.appendChild(time);
+        
+        streamItem.addEventListener('click', () => {
+          connectToStream(stream.id, stream.hostId, stream.name);
+        });
+        
+        streamList.appendChild(streamItem);
+      });
+    }
+    
+    // Connect to a stream
+    async function connectToStream(streamId, hostId, streamName) {
+      try {
+        // If we don't have the host ID, request stream info
+        if (!hostId) {
+          socket.emit('get-stream', streamId);
+          showStatus(`Requesting stream info for ID: ${streamId}...`);
+          return;
+        }
+        
+        showStatus(`Connecting to stream: ${streamName || streamId}...`);
+        
+        // Save the host ID and stream ID
+        currentHostId = hostId;
+        activeStreamId = streamId;
+        currentStreamId.textContent = streamId;
+        
+        // Update UI
+        streamTitle.textContent = `Viewing: ${streamName || 'Stream ' + streamId}`;
+        streamSelection.style.display = 'none';
+        videoContainer.style.display = 'block';
+        connectionStatus.textContent = 'Connecting...';
+        
+        // Create a new RTCPeerConnection
+        console.log('Creating peer connection with config:', peerConnectionConfig);
+        peerConnection = new RTCPeerConnection(peerConnectionConfig);
+        
+        // Set up event handlers for the peer connection
+        peerConnection.onicecandidate = event => {
+          console.log('ICE candidate:', event.candidate);
+          if (event.candidate) {
+            socket.emit('ice-candidate', {
+              hostId: currentHostId,
+              candidate: event.candidate
+            });
+          }
+        };
+        
+        peerConnection.ontrack = event => {
+          console.log('Received remote track:', event.streams[0]);
+          connectionStatus.textContent = 'Track received';
+          
+          // Set the remote video source
+          remoteVideo.srcObject = event.streams[0];
+          
+          // Add event listener to detect when video starts playing
+          remoteVideo.onloadedmetadata = () => {
+            console.log('Video metadata loaded');
+            connectionStatus.textContent = 'Video playing';
+            streamResolution.textContent = `${remoteVideo.videoWidth}x${remoteVideo.videoHeight}`;
+          };
+          
+          // Add event listener for video playing
+          remoteVideo.onplaying = () => {
+            console.log('Video is now playing');
+            connectionStatus.textContent = 'Video playing';
+          };
+          
+          // Add event listener for errors
+          remoteVideo.onerror = (error) => {
+            console.error('Video error:', error);
+            connectionStatus.textContent = `Error: ${error.message || 'Unknown error'}`;
+          };
+        };
+        
+        peerConnection.oniceconnectionstatechange = () => {
+          const state = peerConnection.iceConnectionState;
+          console.log('ICE connection state:', state);
+          connectionStatus.textContent = `ICE: ${state}`;
+          
+          if (state === 'connected' || state === 'completed') {
+            showStatus('Connected to remote stream');
+          } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+            showStatus('Connection lost. Please try reconnecting.', true);
+          }
+        };
+        
+        peerConnection.onconnectionstatechange = () => {
+          const state = peerConnection.connectionState;
+          console.log('Connection state:', state);
+          
+          if (state === 'connected') {
+            showStatus('Connected to remote stream');
+          }
+        };
+        
+        peerConnection.onsignalingstatechange = () => {
+          console.log('Signaling state:', peerConnection.signalingState);
+        };
+        
+        // Create and send an offer with specific constraints
+        console.log('Creating offer with specific constraints');
+        const offerOptions = {
+          offerToReceiveAudio: false,
+          offerToReceiveVideo: true
+        };
+        
+        try {
+          // Create the offer
+          const offer = await peerConnection.createOffer(offerOptions);
+          
+          // Log the original SDP for debugging
+          console.log('Original offer SDP:', offer.sdp);
+          
+          // Set the local description
+          console.log('Setting local description');
+          await peerConnection.setLocalDescription(offer);
+          
+          // Send the offer to the host
+          console.log('Sending offer to host');
+          socket.emit('offer', {
+            hostId: currentHostId,
+            streamId: streamId,
+            offer: offer
+          });
+        } catch (offerError) {
+          console.error('Error creating/setting offer:', offerError);
+          showStatus(`Error creating offer: ${offerError.message}`, true);
+          throw offerError; // Re-throw to be caught by the outer try/catch
+        }
+        
+        showStatus('Offer sent, waiting for answer...');
+      } catch (error) {
+        console.error('Error connecting to stream:', error);
+        showStatus(`Error connecting to stream: ${error.message}`, true);
+        disconnectFromStream();
+      }
+    }
+    
+    // Disconnect from the current stream
+    function disconnectFromStream() {
+      // Close the peer connection
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      
+      // Reset video
+      remoteVideo.srcObject = null;
+      
+      // Update UI
+      videoContainer.style.display = 'none';
+      streamSelection.style.display = 'block';
+      currentHostId = null;
+      activeStreamId = null;
+      currentStreamId.textContent = 'None';
+      connectionStatus.textContent = 'Not connected';
+      streamResolution.textContent = 'Unknown';
+      
+      showStatus('Disconnected from stream');
+    }
+    
+    // Socket.IO event handlers
+    
+    // Receive active streams on connection
+    socket.on('active-streams', (streams) => {
+      console.log('Received active streams:', streams);
+      updateStreamList(streams);
+    });
+    
+    // Receive stream info
+    socket.on('stream-info', (stream) => {
+      console.log('Received stream info:', stream);
+      connectToStream(stream.id, stream.hostId, stream.name);
+    });
+    
+    // Stream not found
+    socket.on('stream-not-found', (data) => {
+      console.log('Stream not found:', data);
+      showStatus(`Stream with ID ${data.id} not found`, true);
+    });
+    
+    // New stream added
+    socket.on('stream-added', (stream) => {
+      console.log('New stream added:', stream);
+      
+      // Add the stream to the list
+      const streamItem = document.createElement('div');
+      streamItem.className = 'stream-item';
+      
+      const title = document.createElement('h3');
+      title.textContent = stream.name || 'Unnamed Stream';
+      
+      const id = document.createElement('p');
+      id.textContent = `ID: ${stream.id}`;
+      
+      const time = document.createElement('p');
+      const createdAt = new Date(stream.createdAt);
+      time.textContent = `Started: ${createdAt.toLocaleTimeString()}`;
+      
+      streamItem.appendChild(title);
+      streamItem.appendChild(id);
+      streamItem.appendChild(time);
+      
+      streamItem.addEventListener('click', () => {
+        connectToStream(stream.id, stream.hostId, stream.name);
+      });
+      
+      streamList.appendChild(streamItem);
+      noStreams.style.display = 'none';
+      
+      showStatus('New stream available: ' + stream.name);
+    });
+    
+    // Stream removed
+    socket.on('stream-removed', (data) => {
+      console.log('Stream removed:', data);
+      
+      // If we're connected to this stream, disconnect
+      if (activeStreamId === data.id) {
+        showStatus('The host has stopped streaming', true);
+        disconnectFromStream();
+      }
+      
+      // Remove the stream from the list
+      const streamItems = streamList.querySelectorAll('.stream-item');
+      let streamsLeft = false;
+      
+      streamItems.forEach(item => {
+        const idText = item.querySelector('p').textContent;
+        if (idText === `ID: ${data.id}`) {
+          streamList.removeChild(item);
+        } else {
+          streamsLeft = true;
+        }
+      });
+      
+      if (!streamsLeft) {
+        noStreams.style.display = 'block';
+      }
+    });
+    
+    // Receive answer from host
+    socket.on('answer', async (data) => {
+      console.log('Received answer from host:', data);
+      
+      if (peerConnection && data.hostId === currentHostId) {
+        try {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+          showStatus('Connected to stream');
+        } catch (error) {
+          console.error('Error setting remote description:', error);
+          showStatus(`Error connecting: ${error.message}`, true);
+        }
+      }
+    });
+    
+    // Receive ICE candidate from host
+    socket.on('ice-candidate', async (data) => {
+      console.log('Received ICE candidate from host:', data);
+      
+      if (peerConnection && data.hostId === currentHostId) {
+        try {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (error) {
+          console.error('Error adding ICE candidate:', error);
+        }
+      }
+    });
+    
+    // Button event handlers
+    
+    // Connect to stream button
+    connectToStreamBtn.addEventListener('click', () => {
+      const streamId = streamIdInput.value.trim();
+      if (streamId) {
+        connectToStream(streamId);
+      } else {
+        showStatus('Please enter a stream ID', true);
+      }
+    });
+    
+    // Disconnect button
+    disconnectBtn.addEventListener('click', () => {
+      disconnectFromStream();
+    });
+    
+    // Fullscreen button
+    fullscreenBtn.addEventListener('click', () => {
+      if (remoteVideo.requestFullscreen) {
+        remoteVideo.requestFullscreen();
+      } else if (remoteVideo.webkitRequestFullscreen) {
+        remoteVideo.webkitRequestFullscreen();
+      } else if (remoteVideo.msRequestFullscreen) {
+        remoteVideo.msRequestFullscreen();
+      }
+    });
+    
+    // Share button
+    shareBtn.addEventListener('click', () => {
+      if (activeStreamId) {
+        const shareUrl = `${window.location.origin}/view/${activeStreamId}`;
+        
+        // Try to use the clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(shareUrl)
+            .then(() => {
+              showStatus('Stream URL copied to clipboard');
+            })
+            .catch(err => {
+              console.error('Error copying to clipboard:', err);
+              // Fallback to prompt
+              prompt('Copy this URL to share the stream:', shareUrl);
+            });
+        } else {
+          // Fallback for browsers that don't support clipboard API
+          prompt('Copy this URL to share the stream:', shareUrl);
+        }
+      }
+    });
+    
+    // Debug button
+    debugBtn.addEventListener('click', () => {
+      if (debugInfo.style.display === 'none') {
+        let info = 'Debug Information:\n';
+        
+        if (peerConnection) {
+          info += `\nICE Connection State: ${peerConnection.iceConnectionState}`;
+          info += `\nConnection State: ${peerConnection.connectionState}`;
+          info += `\nSignaling State: ${peerConnection.signalingState}`;
+          
+          const stats = peerConnection.getStats();
+          stats.then(statsReport => {
+            let statsInfo = '\n\nConnection Stats:\n';
+            statsReport.forEach(report => {
+              if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                statsInfo += `\nResolution: ${report.frameWidth}x${report.frameHeight}`;
+                statsInfo += `\nFrames Received: ${report.framesReceived}`;
+                statsInfo += `\nFrames Decoded: ${report.framesDecoded}`;
+                statsInfo += `\nFrames Dropped: ${report.framesDropped}`;
+                statsInfo += `\nPackets Lost: ${report.packetsLost}`;
+                statsInfo += `\nJitter: ${report.jitter}`;
+              }
+            });
+            debugInfo.textContent = info + statsInfo;
+          });
+        } else {
+          debugInfo.textContent = 'No active connection';
+        }
+        
+        debugInfo.style.display = 'block';
+        debugBtn.textContent = 'Hide Debug Info';
+      } else {
+        debugInfo.style.display = 'none';
+        debugBtn.textContent = 'Show Debug Info';
+      }
+    });
+    
+    // Show initial status
+    showStatus('Connected to server, waiting for available streams...');
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "screen-share-client",
+  "version": "1.0.0",
+  "description": "Unified client for screen sharing and viewing",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start-alt": "electron . --no-sandbox"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "electron": "^35.1.1",
+    "socket.io-client": "^4.7.4"
+  }
+}

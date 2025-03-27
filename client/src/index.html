@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' http: https:; script-src 'self' http: https:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http: https: ws: wss:">
+  <title>Screen Share Client</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    h1, h2, h3 {
+      color: #2c3e50;
+    }
+    .tabs {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #ddd;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+      margin-right: 5px;
+      background-color: #f8f9fa;
+    }
+    .tab.active {
+      background-color: white;
+      border-color: #ddd;
+      border-bottom-color: white;
+      margin-bottom: -1px;
+      font-weight: bold;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .server-connection {
+      margin-bottom: 20px;
+      padding: 15px;
+      background-color: #f0f8ff;
+      border-radius: 4px;
+    }
+    input[type="text"] {
+      padding: 8px;
+      width: 300px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-right: 10px;
+    }
+    button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 15px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    button.stop {
+      background-color: #f44336;
+    }
+    button.stop:hover {
+      background-color: #d32f2f;
+    }
+    .source-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    .source-item {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+      width: 200px;
+    }
+    .source-item:hover {
+      border-color: #4CAF50;
+      background-color: #f9f9f9;
+    }
+    .source-item img {
+      width: 100%;
+      height: auto;
+      border-radius: 4px;
+    }
+    .source-item p {
+      margin: 5px 0 0;
+      text-align: center;
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .video-container {
+      margin-top: 20px;
+      display: none;
+    }
+    video {
+      width: 100%;
+      border-radius: 4px;
+      background-color: #000;
+    }
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .status {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      background-color: #f8f9fa;
+      display: none;
+    }
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .server-info {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #e9f7ef;
+      border-radius: 4px;
+      display: none;
+    }
+    .server-info h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+    }
+    .server-info .url {
+      font-family: monospace;
+      padding: 8px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+    .server-info button {
+      margin-top: 10px;
+    }
+    .stream-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    .stream-item {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s;
+      width: 200px;
+      text-align: center;
+    }
+    .stream-item:hover {
+      border-color: #4CAF50;
+      background-color: #f9f9f9;
+    }
+    .stream-item h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+    }
+    .stream-item p {
+      margin: 5px 0;
+      color: #666;
+    }
+    .no-streams {
+      text-align: center;
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      margin-top: 20px;
+      display: none;
+    }
+    .debug-panel {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .debug-info {
+      margin-top: 10px;
+      white-space: pre-wrap;
+      overflow: auto;
+      max-height: 200px;
+      background-color: #f1f1f1;
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Screen Share Client</h1>
+    
+    <div class="server-connection">
+      <h2>Connect to Server</h2>
+      <p>Enter the server URL to connect:</p>
+      <input type="text" id="serverUrl" placeholder="Server URL (e.g., http://localhost:3000)" value="http://localhost:3000">
+      <button id="connectServerBtn">Connect</button>
+      <button id="disconnectServerBtn" class="stop" disabled>Disconnect</button>
+    </div>
+    
+    <div class="tabs">
+      <div class="tab active" data-tab="host">Host Mode</div>
+      <div class="tab" data-tab="viewer">Viewer Mode</div>
+    </div>
+    
+    <!-- Host Mode Tab -->
+    <div class="tab-content active" id="host-tab">
+      <h2>Share Your Screen</h2>
+      <p>Select a screen or window to share:</p>
+      <button id="getSourcesBtn">Get Sources</button>
+      
+      <div class="source-list" id="sourceList"></div>
+      
+      <div class="video-container" id="hostVideoContainer">
+        <h3>Preview</h3>
+        <video id="hostVideo" autoplay muted></video>
+        <div class="controls">
+          <button id="stopSharingBtn" class="stop">Stop Sharing</button>
+          <button id="startStreamingBtn">Start Streaming</button>
+          <button id="stopStreamingBtn" class="stop" disabled>Stop Streaming</button>
+        </div>
+        
+        <div class="server-info" id="serverInfo">
+          <h3>Remote Viewing</h3>
+          <p><strong>Stream ID:</strong> <span id="streamId">Waiting for server...</span></p>
+          <p>Share this link with others to let them view your screen:</p>
+          <div class="url" id="viewerUrl">Waiting for server...</div>
+          <button id="openViewerBtn">Open in Browser</button>
+          <button id="copyUrlBtn">Copy Link</button>
+          <button id="copyIdBtn">Copy ID</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Viewer Mode Tab -->
+    <div class="tab-content" id="viewer-tab">
+      <h2>View Remote Screen</h2>
+      
+      <div class="stream-id-form">
+        <p>Enter a stream ID to connect directly:</p>
+        <input type="text" id="streamIdInput" placeholder="Stream ID">
+        <button id="connectToStreamBtn">Connect</button>
+      </div>
+      
+      <div id="streamSelection">
+        <h3>Available Streams</h3>
+        <div class="stream-list" id="streamList"></div>
+        <div class="no-streams" id="noStreams">No streams available. Waiting for hosts to start streaming...</div>
+      </div>
+      
+      <div class="video-container" id="viewerVideoContainer">
+        <h3 id="streamTitle">Viewing Stream</h3>
+        <video id="remoteVideo" autoplay playsinline controls></video>
+        <div class="controls">
+          <button id="disconnectBtn" class="stop">Disconnect</button>
+          <button id="shareViewerBtn">Share Link</button>
+        </div>
+        <div class="debug-panel">
+          <div>
+            <strong>Stream ID:</strong> <span id="currentStreamId">None</span>
+          </div>
+          <div>
+            <strong>Connection Status:</strong> <span id="connectionStatus">Not connected</span>
+          </div>
+          <div>
+            <strong>Resolution:</strong> <span id="streamResolution">Unknown</span>
+          </div>
+          <button id="debugBtn">Show Debug Info</button>
+          <div id="debugInfo" class="debug-info"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="status" id="statusMessage"></div>
+  </div>
+
+  <script src="client.js"></script>
+</body>
+</html>
